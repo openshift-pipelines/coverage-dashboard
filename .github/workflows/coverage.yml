@@ -78,6 +78,10 @@ jobs:
               done
 
               COVERAGE=$(go tool cover -func=coverage.out | grep total | awk '{print $3}' | tr -d '%')
+              # Generate HTML report
+              go tool cover -html=coverage.out -o coverage.html
+              mkdir -p ../../gh-pages/coverage/$REPO
+              cp coverage.html ../../gh-pages/coverage/$REPO/index.html
             else
               echo "    ❌ Coverage failed or no testable packages"
               STATUS="failed"
@@ -115,7 +119,7 @@ jobs:
           cd gh-pages
           git config user.name "github-actions"
           git config user.email "github-actions@github.com"
-          git add coverage.json
+          git add coverage.json coverage/
           if git diff --cached --quiet; then
             echo "No changes to commit"
           else
