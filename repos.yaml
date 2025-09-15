@@ -11,6 +11,7 @@ repositories:
       - /fake(/|$)
     exclude_files:
       - zz_generated.deepcopy.go
+      - openapi_generated.go
 
   - name: tektoncd/pipeline
     exclude_dirs:
@@ -22,6 +23,7 @@ repositories:
       - /fake(/|$)
     exclude_files:
       - zz_generated.deepcopy.go
+      - openapi_generated.go
 
   - name: tektoncd/operator
     exclude_dirs:
@@ -33,6 +35,7 @@ repositories:
       - /fake(/|$)
     exclude_files:
       - zz_generated.deepcopy.go
+      - openapi_generated.go
 
   - name: tektoncd/chains
     exclude_dirs:
@@ -44,6 +47,7 @@ repositories:
       - /fake(/|$)
     exclude_files:
       - zz_generated.deepcopy.go
+      - openapi_generated.go
 
   - name: tektoncd/triggers
     exclude_dirs:
@@ -55,5 +59,4 @@ repositories:
       - /fake(/|$)
     exclude_files:
       - zz_generated.deepcopy.go
-
-
+      - openapi_generated.go
