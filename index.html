@@ -137,8 +137,10 @@
         .selectAll(".card")
         .data(data)
         .enter()
-        .append("div")
-        .attr("class", "card");
+        .append("a")
+        .attr("class", "card")
+        .attr("href", d => `coverage/${d.repo}/index.html`)
+        .attr("target", "_blank");
 
       // Repo name with link
       cards.append("div")
