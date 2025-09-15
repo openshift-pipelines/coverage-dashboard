@@ -3,52 +3,81 @@
 <head>
   <meta charset="UTF-8">
   <title>Tekton Coverage Dashboard</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
   <style>
     body {
-      font-family: Arial, sans-serif;
-      background: #f8f9fa;
+      font-family: sans-serif;
+      background: #f5f5f5;
+      padding: 2em;
       color: #333;
-      margin: 0;
-      padding: 20px;
     }
+
     h1 {
       color: #007acc;
+      margin-bottom: 0.5em;
     }
+
+    a {
+      color: #007acc;
+      text-decoration: none;
+    }
+
+    a:hover {
+      text-decoration: underline;
+    }
+
     table {
       width: 100%;
       border-collapse: collapse;
       background: white;
-      box-shadow: 0 0 10px rgba(0,0,0,0.1);
+      box-shadow: 0 0 10px rgba(0,0,0,0.05);
     }
+
     th, td {
-      padding: 12px;
+      padding: 0.75em;
       text-align: left;
-      border-bottom: 1px solid #ddd;
+      border-bottom: 1px solid #eee;
     }
+
     th {
-      background-color: #007acc;
+      background: #007acc;
       color: white;
     }
-    tr:hover {
-      background-color: #f1f1f1;
+
+    .bar-container {
+      background: #eee;
+      height: 16px;
+      width: 100%;
+      max-width: 200px;
+      border-radius: 8px;
+      overflow: hidden;
     }
-    .ok {
-      color: green;
-      font-weight: bold;
+
+    .bar {
+      height: 100%;
+      text-align: right;
+      padding-right: 5px;
+      color: white;
+      font-size: 12px;
+      line-height: 16px;
     }
-    .failed {
-      color: red;
-      font-weight: bold;
-    }
-    .status-icon {
-      font-size: 1.2em;
-      margin-right: 8px;
+
+    .green { background: #4caf50; }
+    .orange { background: #ff9800; }
+    .red { background: #f44336; }
+
+    .status-ok { color: green; font-weight: bold; }
+    .status-failed { color: red; font-weight: bold; }
+
+    #run-link {
+      margin-bottom: 1em;
     }
   </style>
 </head>
 <body>
   <h1>Tekton Coverage Dashboard</h1>
-  <table>
+  <div id="run-link"></div>
+  <table id="dashboard">
     <thead>
       <tr>
         <th>Repository</th>
@@ -56,68 +85,69 @@
         <th>Status</th>
       </tr>
     </thead>
-    <tbody id="coverage-data">
-      <!-- Data will be injected here -->
-    </tbody>
+    <tbody></tbody>
   </table>
 
   <script>
-    fetch('coverage.json')
-      .then(response => response.json())
-      .then(data => {
-        const table = document.getElementById('coverage-data');
+    d3.json("coverage.json").then(json => {
+      const runUrl = json.run_url;
+      const data = json.data;
 
-        // Sort: push failed to the bottom
-        data.sort((a, b) => {
-          if (a.status === b.status) return 0;
-          return a.status === 'failed' ? 1 : -1;
-        });
+      // Show GitHub Actions run link
+      if (runUrl) {
+        d3.select("#run-link").append("a")
+          .attr("href", runUrl)
+          .attr("target", "_blank")
+          .text("🔗 Last updated via GitHub Actions run");
+      }
 
-        data.forEach(item => {
-          const tr = document.createElement('tr');
-
-          const repoTd = document.createElement('td');
-          repoTd.textContent = item.repo;
-
-          const coverageTd = document.createElement('td');
-          const coverageValue = parseFloat(item.coverage);
-          coverageTd.textContent = isNaN(coverageValue)
-            ? 'N/A'
-            : coverageValue.toFixed(2) + '%';
-
-          const statusTd = document.createElement('td');
-          const icon = document.createElement('span');
-          icon.classList.add('status-icon');
-
-          if (item.status === 'ok') {
-            statusTd.classList.add('ok');
-            icon.textContent = '✅';
-          } else {
-            statusTd.classList.add('failed');
-            icon.textContent = '❌';
-          }
-
-          statusTd.appendChild(icon);
-          statusTd.appendChild(document.createTextNode(item.status));
-
-          tr.appendChild(repoTd);
-          tr.appendChild(coverageTd);
-          tr.appendChild(statusTd);
-          table.appendChild(tr);
-        });
-      })
-      .catch(error => {
-        console.error('Failed to load coverage data:', error);
-        const table = document.getElementById('coverage-data');
-        const tr = document.createElement('tr');
-        const td = document.createElement('td');
-        td.colSpan = 3;
-        td.textContent = 'Failed to load coverage data.';
-        tr.appendChild(td);
-        table.appendChild(tr);
+      // Sort: OK first, then by coverage descending
+      data.sort((a, b) => {
+        if (a.status !== b.status) return a.status === 'ok' ? -1 : 1;
+        return (b.coverage || 0) - (a.coverage || 0);
       });
+
+      const rows = d3.select("tbody")
+        .selectAll("tr")
+        .data(data)
+        .enter()
+        .append("tr");
+
+      // Repository column
+      rows.append("td")
+        .append("a")
+        .attr("href", d => `https://github.com/${d.repo}`)
+        .attr("target", "_blank")
+        .text(d => d.repo);
+
+      // Coverage column with bar
+      rows.append("td").html(d => {
+        if (isNaN(d.coverage)) return "N/A";
+
+        const cov = parseFloat(d.coverage).toFixed(1);
+        let color = "red";
+        if (cov >= 80) color = "green";
+        else if (cov >= 50) color = "orange";
+
+        return `
+          <div class="bar-container">
+            <div class="bar ${color}" style="width:${cov}%">${cov}%</div>
+          </div>`;
+      });
+
+      // Status column
+      rows.append("td")
+        .attr("class", d => `status-${d.status}`)
+        .text(d => d.status === 'ok' ? '✅ OK' : '❌ Failed');
+    }).catch(error => {
+      d3.select("tbody")
+        .append("tr")
+        .append("td")
+        .attr("colspan", 3)
+        .text("⚠️ Failed to load coverage data.");
+      console.error("Failed to load coverage.json", error);
+    });
   </script>
 </body>
 </html>
-
 
