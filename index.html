@@ -4,89 +4,115 @@
   <meta charset="UTF-8">
   <title>Tekton Coverage Dashboard</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
   <style>
     body {
-      font-family: sans-serif;
-      background: #f5f5f5;
+      font-family: 'Inter', sans-serif;
+      background: #f9fafb;
       padding: 2em;
-      color: #333;
+      color: #1f2937;
     }
 
     h1 {
-      color: #007acc;
-      margin-bottom: 0.5em;
+      color: #2563eb;
+      margin-bottom: 1em;
+      font-weight: 600;
+    }
+
+    #run-link {
+      margin-bottom: 2em;
+      font-size: 0.9rem;
     }
 
     a {
-      color: #007acc;
+      color: #2563eb;
       text-decoration: none;
+      font-weight: 500;
     }
 
     a:hover {
       text-decoration: underline;
     }
 
-    table {
-      width: 100%;
-      border-collapse: collapse;
+    /* Grid for cards */
+    .card-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 1.5em;
+    }
+
+    .card {
       background: white;
-      box-shadow: 0 0 10px rgba(0,0,0,0.05);
+      border-radius: 12px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+      padding: 1.2em;
+      transition: transform 0.2s ease, box-shadow 0.2s ease;
     }
 
-    th, td {
-      padding: 0.75em;
-      text-align: left;
-      border-bottom: 1px solid #eee;
+    .card:hover {
+      transform: translateY(-3px);
+      box-shadow: 0 4px 16px rgba(0,0,0,0.08);
     }
 
-    th {
-      background: #007acc;
-      color: white;
+    .repo {
+      font-weight: 600;
+      font-size: 1rem;
+      margin-bottom: 0.8em;
+      color: #111827;
     }
 
     .bar-container {
-      background: #eee;
-      height: 16px;
-      width: 100%;
-      max-width: 200px;
-      border-radius: 8px;
+      background: #e5e7eb;
+      height: 14px;
+      border-radius: 7px;
       overflow: hidden;
+      margin-top: 6px;
     }
 
     .bar {
       height: 100%;
-      text-align: right;
-      padding-right: 5px;
-      color: white;
-      font-size: 12px;
-      line-height: 16px;
+      border-radius: 7px;
+      transition: width 0.8s ease;
     }
 
-    .green { background: #4caf50; }
-    .orange { background: #ff9800; }
-    .red { background: #f44336; }
+    .green { background: linear-gradient(90deg,#22c55e,#16a34a); }
+    .orange { background: linear-gradient(90deg,#f59e0b,#d97706); }
+    .red { background: linear-gradient(90deg,#ef4444,#dc2626); }
 
-    .status-ok { color: green; font-weight: bold; }
-    .status-failed { color: red; font-weight: bold; }
+    .percentage {
+      font-size: 0.85rem;
+      font-weight: 600;
+      margin-left: 6px;
+      color: #374151;
+    }
 
-    #run-link {
-      margin-bottom: 1em;
+    .status {
+      margin-top: 0.8em;
+    }
+
+    .badge {
+      display: inline-block;
+      padding: 0.3em 0.6em;
+      border-radius: 9999px;
+      font-size: 0.8rem;
+      font-weight: 600;
+    }
+
+    .badge-ok {
+      background: #dcfce7;
+      color: #15803d;
+    }
+
+    .badge-failed {
+      background: #fee2e2;
+      color: #b91c1c;
     }
   </style>
 </head>
 <body>
   <h1>Tekton Coverage Dashboard</h1>
   <div id="run-link"></div>
-  <table id="dashboard">
-    <thead>
-      <tr>
-        <th>Repository</th>
-        <th>Coverage</th>
-        <th>Status</th>
-      </tr>
-    </thead>
-    <tbody></tbody>
-  </table>
+  <div class="card-grid" id="dashboard"></div>
 
   <script>
     d3.json("coverage.json").then(json => {
@@ -107,21 +133,23 @@
         return (b.coverage || 0) - (a.coverage || 0);
       });
 
-      const rows = d3.select("tbody")
-        .selectAll("tr")
+      const cards = d3.select("#dashboard")
+        .selectAll(".card")
         .data(data)
         .enter()
-        .append("tr");
+        .append("div")
+        .attr("class", "card");
 
-      // Repository column
-      rows.append("td")
+      // Repo name with link
+      cards.append("div")
+        .attr("class", "repo")
         .append("a")
         .attr("href", d => `https://github.com/${d.repo}`)
         .attr("target", "_blank")
         .text(d => d.repo);
 
-      // Coverage column with bar
-      rows.append("td").html(d => {
+      // Coverage bar + percentage
+      cards.append("div").html(d => {
         if (isNaN(d.coverage)) return "N/A";
 
         const cov = parseFloat(d.coverage).toFixed(1);
@@ -131,23 +159,37 @@
 
         return `
           <div class="bar-container">
-            <div class="bar ${color}" style="width:${cov}%">${cov}%</div>
-          </div>`;
+            <div class="bar ${color}" style="width:0%"></div>
+          </div>
+          <span class="percentage">${cov}%</span>
+        `;
       });
 
-      // Status column
-      rows.append("td")
-        .attr("class", d => `status-${d.status}`)
-        .text(d => d.status === 'ok' ? '✅ OK' : '❌ Failed');
+      // Animate bars
+      d3.selectAll(".bar").transition()
+        .duration(800)
+        .style("width", function(_, i) {
+          const cov = data[i].coverage.toFixed(1);
+          return cov + "%";
+        });
+
+      // Status badge
+      cards.append("div")
+        .attr("class", "status")
+        .html(d => {
+          return d.status === 'ok'
+            ? `<span class="badge badge-ok">✅ OK</span>`
+            : `<span class="badge badge-failed">❌ Failed</span>`;
+        });
     }).catch(error => {
-      d3.select("tbody")
-        .append("tr")
-        .append("td")
-        .attr("colspan", 3)
+      d3.select("#dashboard")
+        .append("div")
+        .attr("class", "card")
         .text("⚠️ Failed to load coverage data.");
       console.error("Failed to load coverage.json", error);
     });
   </script>
 </body>
 </html>
+
 
