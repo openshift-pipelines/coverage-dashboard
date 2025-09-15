@@ -3,13 +3,13 @@ name: Generate Tekton Coverage Dashboard
 on:
   schedule:
     - cron: '0 3 * * *'  # Daily at 03:00 UTC
-  workflow_dispatch:     # Allow manual trigger
+  workflow_dispatch:
 
 jobs:
   generate-coverage:
     runs-on: ubuntu-latest
     permissions:
-      contents: write  # Needed to push to gh-pages
+      contents: write
 
     steps:
       - name: Checkout this repo (dashboard)
@@ -20,48 +20,67 @@ jobs:
         with:
           go-version: '1.22'
 
-      - name: Create workspace
+      - name: Install yq
+        run: pip install yq
+
+      - name: Prepare workspace
         run: mkdir workspace
 
-      - name: Clone and calculate coverage
+      - name: Clone repos and calculate coverage
         run: |
           cd workspace
-          repos=(
-            "tektoncd/results"
-            "tektoncd/pipeline"
-            "tektoncd/operator"
-            "tektoncd/chains"
-            "tektoncd/triggers"
-          )
-
           echo "[" > ../coverage.json
 
-          for repo in "${repos[@]}"; do
-            echo "Cloning https://github.com/$repo..."
-            git clone --depth 1 https://github.com/$repo.git
-            cd $(basename $repo)
+          COUNT=$(yq '.repositories | length' ../repos.yaml)
 
-            echo "Finding Go packages (excluding vendor/, cmd/, test/)..."
-            INCLUDED_PACKAGES=$(go list ./... | grep -vE '/vendor|/cmd|/test')
+          for i in $(seq 0 $((COUNT - 1))); do
+            REPO=$(yq ".repositories[$i].name" ../repos.yaml | tr -d '"')
+            REPO_NAME=$(basename "$REPO")
 
-            echo "Running tests with coverage for $repo..."
-            if [ -n "$INCLUDED_PACKAGES" ] && go test -coverprofile=coverage.out $INCLUDED_PACKAGES; then
+            echo "→ Cloning $REPO..."
+            git clone --depth 1 "https://github.com/$REPO.git"
+            cd "$REPO_NAME"
+
+            # Get exclusions
+            EXCLUDE_DIRS=$(yq ".repositories[$i].exclude_dirs // [] | join(\"|\")" ../../repos.yaml)
+            EXCLUDE_FILES=$(yq ".repositories[$i].exclude_files // []" ../../repos.yaml)
+
+            echo "  Exclude dirs: $EXCLUDE_DIRS"
+            echo "  Exclude files: $EXCLUDE_FILES"
+
+            # List packages, excluding directories
+            if [ -n "$EXCLUDE_DIRS" ]; then
+              INCLUDED_PACKAGES=$(go list ./... | grep -vE "$EXCLUDE_DIRS")
+            else
+              INCLUDED_PACKAGES=$(go list ./...)
+            fi
+
+            # Run coverage
+            if [ -n "$INCLUDED_PACKAGES" ] && go test -coverprofile=coverage_raw.out $INCLUDED_PACKAGES; then
+              cp coverage_raw.out coverage.out
+
+              # Exclude individual files from coverage.out
+              FILE_COUNT=$(echo "$EXCLUDE_FILES" | yq 'length')
+              for j in $(seq 0 $((FILE_COUNT - 1))); do
+                FILE=$(echo "$EXCLUDE_FILES" | yq ".[$j]" | tr -d '"')
+                echo "    Removing $FILE from coverage"
+                sed -i "/$FILE/d" coverage.out || true
+              done
+
               COVERAGE=$(go tool cover -func=coverage.out | grep total | awk '{print $3}' | tr -d '%')
             else
-              echo "No valid packages or tests failed. Setting coverage to 0"
+              echo "    Coverage collection failed or no testable packages."
               COVERAGE=0.0
             fi
 
-            REPO_NAME=$(basename $repo)
-            echo "  → $REPO_NAME: $COVERAGE%"
-
+            echo "    → $REPO_NAME coverage: $COVERAGE%"
             echo "  {\"repo\": \"$REPO_NAME\", \"coverage\": $COVERAGE }," >> ../../coverage.json
 
             cd ..
           done
 
           cd ..
-          # Remove trailing comma and close JSON array
+          # Finalize JSON array
           sed -i '$ s/,$//' coverage.json
           echo "]" >> coverage.json
 
@@ -71,7 +90,7 @@ jobs:
           ref: gh-pages
           path: gh-pages
 
-      - name: Copy coverage.json to gh-pages
+      - name: Copy and commit coverage.json
         run: |
           cp coverage.json gh-pages/coverage.json
           cd gh-pages
@@ -80,5 +99,4 @@ jobs:
           git add coverage.json
           git commit -m "Update coverage data on $(date --utc)"
           git push origin gh-pages
-
 
