@@ -82,7 +82,7 @@ jobs:
               echo "    ❌ Coverage failed or no testable packages"
               STATUS="failed"
 
-              OLD_ENTRY=$(echo "$OLD_COVERAGE_JSON" | jq -r --arg repo "$REPO_NAME" '.data[]? | select(.repo == $repo)')
+              OLD_ENTRY=$(echo "$OLD_COVERAGE_JSON" | jq -r --arg repo "$REPO" '.data[]? | select(.repo == $repo)')
               if [ -n "$OLD_ENTRY" ]; then
                 COVERAGE=$(echo "$OLD_ENTRY" | jq -r '.coverage')
               else
@@ -90,8 +90,8 @@ jobs:
               fi
             fi
 
-            echo "    → $REPO_NAME coverage: $COVERAGE% (status: $STATUS)"
-            echo "  {\"repo\": \"$REPO_NAME\", \"coverage\": $COVERAGE, \"status\": \"$STATUS\" }," >> ../../_temp_coverage.json
+            echo "    → $REPO coverage: $COVERAGE% (status: $STATUS)"
+            echo "  {\"repo\": \"$REPO\", \"coverage\": $COVERAGE, \"status\": \"$STATUS\" }," >> ../../_temp_coverage.json
 
             cd ..
           done
