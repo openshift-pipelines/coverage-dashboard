@@ -1,7 +1,7 @@
 [
-  {"repo": "results", "coverage": 31.5 },
-  {"repo": "pipeline", "coverage": 59.4 },
-  {"repo": "operator", "coverage": 28.6 },
-  {"repo": "chains", "coverage": 62.2 },
-  {"repo": "triggers", "coverage": 40.8 }
+  {"repo": "results", "coverage": 45.5 },
+  {"repo": "pipeline", "coverage": 56.6 },
+  {"repo": "operator", "coverage": 26.2 },
+  {"repo": "chains", "coverage": 61.2 },
+  {"repo": "triggers", "coverage": 0.0 }
 ]
