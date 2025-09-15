@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Tekton Code Coverage Dashboard</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    body {
+      font-family: sans-serif;
+      margin: 2rem;
+      background-color: #f9f9f9;
+    }
+    h1 {
+      text-align: center;
+      color: #333;
+    }
+    table {
+      margin: 2rem auto;
+      border-collapse: collapse;
+      width: 80%;
+      background-color: #fff;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+    }
+    th, td {
+      padding: 1rem;
+      text-align: left;
+      border-bottom: 1px solid #ccc;
+    }
+    th {
+      background-color: #f2f2f2;
+      color: #222;
+    }
+    tr:hover {
+      background-color: #f5f5f5;
+    }
+    .high {
+      color: green;
+      font-weight: bold;
+    }
+    .medium {
+      color: orange;
+      font-weight: bold;
+    }
+    .low {
+      color: red;
+      font-weight: bold;
+    }
+    footer {
+      text-align: center;
+      margin-top: 3rem;
+      color: #888;
+    }
+  </style>
+</head>
+<body>
+  <h1>Tekton Code Coverage Dashboard</h1>
+  <table>
+    <thead>
+      <tr>
+        <th>Repository</th>
+        <th>Coverage (%)</th>
+      </tr>
+    </thead>
+    <tbody id="coverage-table">
+      <!-- Data will be injected here -->
+    </tbody>
+  </table>
+
+  <footer>
+    Last updated: <span id="last-updated">Loading...</span>
+  </footer>
+
+  <script>
+    fetch('coverage.json')
+      .then(response => response.json())
+      .then(data => {
+        const tbody = document.getElementById('coverage-table');
+        const now = new Date().toLocaleString();
+        document.getElementById('last-updated').textContent = now;
+
+        data.forEach(entry => {
+          const row = document.createElement('tr');
+          const coverage = parseFloat(entry.coverage);
+          let className = 'low';
+          if (coverage >= 80) className = 'high';
+          else if (coverage >= 60) className = 'medium';
+
+          row.innerHTML = `
+            <td><a href="https://github.com/tektoncd/${entry.repo}" target="_blank">${entry.repo}</a></td>
+            <td class="${className}">${coverage.toFixed(1)}</td>
+          `;
+          tbody.appendChild(row);
+        });
+      })
+      .catch(err => {
+        document.getElementById('coverage-table').innerHTML = `
+          <tr><td colspan="2" style="color: red;">Error loading coverage.json</td></tr>
+        `;
+        console.error("Failed to load coverage data:", err);
+      });
+  </script>
+</body>
+</html>
+
