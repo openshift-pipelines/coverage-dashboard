@@ -3,5 +3,5 @@
   {"repo": "pipeline", "coverage": 66.3, "status": "ok" },
   {"repo": "operator", "coverage": 31.0, "status": "ok" },
   {"repo": "chains", "coverage": 63.7, "status": "ok" },
-  {"repo": "triggers", "coverage": 0.0, "status": "failed" }
+  {"repo": "triggers", "coverage": 50.1, "status": "ok" }
 ]
