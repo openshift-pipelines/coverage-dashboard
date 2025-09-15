@@ -23,8 +23,8 @@
     },
     {
       "repo": "tektoncd/triggers",
-      "coverage": 50.1,
-      "status": "failed"
+      "coverage": 50.0,
+      "status": "ok"
     }
   ]
 }
