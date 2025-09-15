@@ -23,11 +23,20 @@ jobs:
         with:
           go-version: '1.22'
 
-      - name: Install yq
-        run: pip install yq
+      - name: Install tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y jq
+          pip install yq
 
       - name: Prepare workspace
         run: mkdir workspace
+
+      - name: Checkout gh-pages to access old coverage.json
+        uses: actions/checkout@v4
+        with:
+          ref: gh-pages
+          path: gh-pages
 
       - name: Clone repos and calculate coverage
         run: |
@@ -35,6 +44,8 @@ jobs:
           echo "[" > ../coverage.json
 
           COUNT=$(yq '.repositories | length' ../repos.yaml)
+
+          OLD_COVERAGE_JSON=$(cat ../gh-pages/coverage.json)
 
           for i in $(seq 0 $((COUNT - 1))); do
             REPO=$(yq ".repositories[$i].name" ../repos.yaml | tr -d '"')
@@ -44,25 +55,24 @@ jobs:
             git clone --depth 1 "https://github.com/$REPO.git"
             cd "$REPO_NAME"
 
-            # Get exclusions
             EXCLUDE_DIRS=$(yq ".repositories[$i].exclude_dirs // [] | join(\"|\")" ../../repos.yaml)
             EXCLUDE_FILES=$(yq ".repositories[$i].exclude_files // []" ../../repos.yaml)
 
             echo "  Exclude dirs: $EXCLUDE_DIRS"
             echo "  Exclude files: $EXCLUDE_FILES"
 
-            # List packages, excluding directories
             if [ -n "$EXCLUDE_DIRS" ]; then
-              INCLUDED_PACKAGES=$(go list ./... | grep -vE "$EXCLUDE_DIRS")
+              INCLUDED_PACKAGES=$(go list ./... | grep -vE "$EXCLUDE_DIRS" || true)
             else
               INCLUDED_PACKAGES=$(go list ./...)
             fi
 
-            # Run coverage
+            STATUS="ok"
+            COVERAGE="0.0"
+
             if [ -n "$INCLUDED_PACKAGES" ] && go test -coverprofile=coverage_raw.out $INCLUDED_PACKAGES; then
               cp coverage_raw.out coverage.out
 
-              # Exclude individual files from coverage.out
               FILE_COUNT=$(echo "$EXCLUDE_FILES" | yq 'length')
               for j in $(seq 0 $((FILE_COUNT - 1))); do
                 FILE=$(echo "$EXCLUDE_FILES" | yq ".[$j]" | tr -d '"')
@@ -72,34 +82,39 @@ jobs:
 
               COVERAGE=$(go tool cover -func=coverage.out | grep total | awk '{print $3}' | tr -d '%')
             else
-              echo "    Coverage collection failed or no testable packages."
-              COVERAGE=0.0
+              echo "    ❌ Coverage failed or no testable packages"
+              STATUS="failed"
+
+              OLD_ENTRY=$(echo "$OLD_COVERAGE_JSON" | jq -r --arg repo "$REPO_NAME" '.[] | select(.repo == $repo)')
+              if [ -n "$OLD_ENTRY" ]; then
+                COVERAGE=$(echo "$OLD_ENTRY" | jq -r '.coverage')
+              else
+                COVERAGE=null
+              fi
             fi
 
-            echo "    → $REPO_NAME coverage: $COVERAGE%"
-            echo "  {\"repo\": \"$REPO_NAME\", \"coverage\": $COVERAGE }," >> ../../coverage.json
+            echo "    → $REPO_NAME coverage: $COVERAGE% (status: $STATUS)"
+            echo "  {\"repo\": \"$REPO_NAME\", \"coverage\": $COVERAGE, \"status\": \"$STATUS\" }," >> ../../coverage.json
 
             cd ..
           done
 
           cd ..
-          # Finalize JSON array
           sed -i '$ s/,$//' coverage.json
           echo "]" >> coverage.json
 
-      - name: Checkout gh-pages branch
-        uses: actions/checkout@v4
-        with:
-          ref: gh-pages
-          path: gh-pages
-
-      - name: Copy and commit coverage.json
+      - name: Commit and push updated coverage.json
         run: |
           cp coverage.json gh-pages/coverage.json
           cd gh-pages
           git config user.name "github-actions"
           git config user.email "github-actions@github.com"
           git add coverage.json
-          git commit -m "Update coverage data on $(date --utc)"
-          git push origin gh-pages
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "Update coverage data on $(date --utc)"
+            git push origin gh-pages
+          fi
+
 
