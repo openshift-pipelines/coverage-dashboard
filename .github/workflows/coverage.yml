@@ -1,0 +1,84 @@
+name: Generate Tekton Coverage Dashboard
+
+on:
+  schedule:
+    - cron: '0 3 * * *'  # Daily at 03:00 UTC
+  workflow_dispatch:     # Allow manual trigger
+
+jobs:
+  generate-coverage:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write  # Needed to push to gh-pages
+
+    steps:
+      - name: Checkout this repo (dashboard)
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+
+      - name: Create workspace
+        run: mkdir workspace
+
+      - name: Clone and calculate coverage
+        run: |
+          cd workspace
+          repos=(
+            "tektoncd/results"
+            "tektoncd/pipeline"
+            "tektoncd/operator"
+            "tektoncd/chains"
+            "tektoncd/triggers"
+          )
+
+          echo "[" > ../coverage.json
+
+          for repo in "${repos[@]}"; do
+            echo "Cloning https://github.com/$repo..."
+            git clone --depth 1 https://github.com/$repo.git
+            cd $(basename $repo)
+
+            echo "Finding Go packages (excluding vendor/, cmd/, test/)..."
+            INCLUDED_PACKAGES=$(go list ./... | grep -vE '/vendor|/cmd|/test')
+
+            echo "Running tests with coverage for $repo..."
+            if [ -n "$INCLUDED_PACKAGES" ] && go test -coverprofile=coverage.out $INCLUDED_PACKAGES; then
+              COVERAGE=$(go tool cover -func=coverage.out | grep total | awk '{print $3}' | tr -d '%')
+            else
+              echo "No valid packages or tests failed. Setting coverage to 0"
+              COVERAGE=0.0
+            fi
+
+            REPO_NAME=$(basename $repo)
+            echo "  → $REPO_NAME: $COVERAGE%"
+
+            echo "  {\"repo\": \"$REPO_NAME\", \"coverage\": $COVERAGE }," >> ../../coverage.json
+
+            cd ..
+          done
+
+          cd ..
+          # Remove trailing comma and close JSON array
+          sed -i '$ s/,$//' coverage.json
+          echo "]" >> coverage.json
+
+      - name: Checkout gh-pages branch
+        uses: actions/checkout@v4
+        with:
+          ref: gh-pages
+          path: gh-pages
+
+      - name: Copy coverage.json to gh-pages
+        run: |
+          cp coverage.json gh-pages/coverage.json
+          cd gh-pages
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+          git add coverage.json
+          git commit -m "Update coverage data on $(date --utc)"
+          git push origin gh-pages
+
+
