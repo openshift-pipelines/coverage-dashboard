@@ -6,6 +6,11 @@ repositories:
       - hack/
       - proto/
       - test/
+      - pkg/test
+      - tools/
+      - /fake(/|$)
+    exclude_files:
+      - zz_generated.deepcopy.go
 
   - name: tektoncd/pipeline
     exclude_dirs:
@@ -14,6 +19,9 @@ repositories:
       - hack/
       - proto/
       - test/
+      - /fake(/|$)
+    exclude_files:
+      - zz_generated.deepcopy.go
 
   - name: tektoncd/operator
     exclude_dirs:
@@ -22,6 +30,9 @@ repositories:
       - hack/
       - proto/
       - test/
+      - /fake(/|$)
+    exclude_files:
+      - zz_generated.deepcopy.go
 
   - name: tektoncd/chains
     exclude_dirs:
@@ -30,6 +41,9 @@ repositories:
       - hack/
       - proto/
       - test/
+      - /fake(/|$)
+    exclude_files:
+      - zz_generated.deepcopy.go
 
   - name: tektoncd/triggers
     exclude_dirs:
@@ -38,5 +52,8 @@ repositories:
       - hack/
       - proto/
       - test/
+      - /fake(/|$)
+    exclude_files:
+      - zz_generated.deepcopy.go
 
 
