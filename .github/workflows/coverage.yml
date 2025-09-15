@@ -41,11 +41,11 @@ jobs:
       - name: Clone repos and calculate coverage
         run: |
           cd workspace
-          echo "[" > ../coverage.json
+          echo "[" > ../_temp_coverage.json
 
           COUNT=$(yq '.repositories | length' ../repos.yaml)
 
-          OLD_COVERAGE_JSON=$(cat ../gh-pages/coverage.json)
+          OLD_COVERAGE_JSON=$(cat ../gh-pages/coverage.json || echo "[]")
 
           for i in $(seq 0 $((COUNT - 1))); do
             REPO=$(yq ".repositories[$i].name" ../repos.yaml | tr -d '"')
@@ -57,9 +57,6 @@ jobs:
 
             EXCLUDE_DIRS=$(yq ".repositories[$i].exclude_dirs // [] | join(\"|\")" ../../repos.yaml)
             EXCLUDE_FILES=$(yq ".repositories[$i].exclude_files // []" ../../repos.yaml)
-
-            echo "  Exclude dirs: $EXCLUDE_DIRS"
-            echo "  Exclude files: $EXCLUDE_FILES"
 
             if [ -n "$EXCLUDE_DIRS" ]; then
               INCLUDED_PACKAGES=$(go list ./... | grep -vE "$EXCLUDE_DIRS" || true)
@@ -85,7 +82,7 @@ jobs:
               echo "    ❌ Coverage failed or no testable packages"
               STATUS="failed"
 
-              OLD_ENTRY=$(echo "$OLD_COVERAGE_JSON" | jq -r --arg repo "$REPO_NAME" '.[] | select(.repo == $repo)')
+              OLD_ENTRY=$(echo "$OLD_COVERAGE_JSON" | jq -r --arg repo "$REPO_NAME" '.data[]? | select(.repo == $repo)')
               if [ -n "$OLD_ENTRY" ]; then
                 COVERAGE=$(echo "$OLD_ENTRY" | jq -r '.coverage')
               else
@@ -94,14 +91,23 @@ jobs:
             fi
 
             echo "    → $REPO_NAME coverage: $COVERAGE% (status: $STATUS)"
-            echo "  {\"repo\": \"$REPO_NAME\", \"coverage\": $COVERAGE, \"status\": \"$STATUS\" }," >> ../../coverage.json
+            echo "  {\"repo\": \"$REPO_NAME\", \"coverage\": $COVERAGE, \"status\": \"$STATUS\" }," >> ../../_temp_coverage.json
 
             cd ..
           done
 
           cd ..
-          sed -i '$ s/,$//' coverage.json
-          echo "]" >> coverage.json
+          sed -i '$ s/,$//' _temp_coverage.json
+          echo "]" >> _temp_coverage.json
+
+      - name: Wrap coverage.json with run_url
+        run: |
+          RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+
+          jq -n \
+            --arg run_url "$RUN_URL" \
+            --argjson data "$(cat _temp_coverage.json)" \
+            '{run_url: $run_url, data: $data}' > coverage.json
 
       - name: Commit and push updated coverage.json
         run: |
@@ -116,5 +122,3 @@ jobs:
             git commit -m "Update coverage data on $(date --utc)"
             git push origin gh-pages
           fi
-
-
