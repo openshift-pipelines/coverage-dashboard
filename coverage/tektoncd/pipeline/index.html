@@ -65,7 +65,7 @@
 				
 				<option value="file4">github.com/tektoncd/pipeline/cmd/entrypoint/post_writer.go (72.7%)</option>
 				
-				<option value="file5">github.com/tektoncd/pipeline/cmd/entrypoint/runner.go (86.2%)</option>
+				<option value="file5">github.com/tektoncd/pipeline/cmd/entrypoint/runner.go (84.5%)</option>
 				
 				<option value="file6">github.com/tektoncd/pipeline/cmd/entrypoint/spire.go (0.0%)</option>
 				
@@ -1814,7 +1814,7 @@ func (rr *realRunner) Run(ctx context.Context, args ...string) error <span class
                 if errors.Is(ctx.Err(), context.DeadlineExceeded) </span><span class="cov0" title="0">{
                         return entrypoint.ErrContextDeadlineExceeded
                 }</span>
-                <span class="cov8" title="1">if errors.Is(ctx.Err(), context.Canceled) </span><span class="cov8" title="1">{
+                <span class="cov8" title="1">if errors.Is(ctx.Err(), context.Canceled) </span><span class="cov0" title="0">{
                         return entrypoint.ErrContextCanceled
                 }</span>
                 <span class="cov8" title="1">return err</span>
