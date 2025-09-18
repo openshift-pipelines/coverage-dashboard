@@ -1,4 +1,18 @@
 repositories:
+  - name: openshift-pipelines/pipelines-as-code
+    exclude_dirs:
+      - cmd/
+      - vendor/
+      - hack/
+      - proto/
+      - test/
+      - pkg/test
+      - tools/
+      - /fake(/|$)
+    exclude_files:
+      - zz_generated.deepcopy.go
+      - openapi_generated.go
+
   - name: tektoncd/results
     exclude_dirs:
       - cmd/
@@ -50,18 +64,6 @@ repositories:
       - openapi_generated.go
 
   - name: tektoncd/triggers
-    exclude_dirs:
-      - cmd/
-      - vendor/
-      - hack/
-      - proto/
-      - test/
-      - /fake(/|$)
-    exclude_files:
-      - zz_generated.deepcopy.go
-      - openapi_generated.go
-
-  - name: openshift-pipelines/pipelines-as-code
     exclude_dirs:
       - cmd/
       - vendor/
