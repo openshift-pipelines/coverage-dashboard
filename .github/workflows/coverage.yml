@@ -55,13 +55,74 @@ jobs:
             git clone --depth 1 "https://github.com/$REPO.git"
             cd "$REPO_NAME"
 
-            EXCLUDE_DIRS=$(yq ".repositories[$i].exclude_dirs // [] | join(\"|\")" ../../repos.yaml)
+            # Get exclude patterns and build proper regex
+            EXCLUDE_DIRS_ARRAY=$(yq ".repositories[$i].exclude_dirs // []" ../../repos.yaml)
             EXCLUDE_FILES=$(yq ".repositories[$i].exclude_files // []" ../../repos.yaml)
 
-            if [ -n "$EXCLUDE_DIRS" ]; then
-              INCLUDED_PACKAGES=$(go list ./... | grep -vE "$EXCLUDE_DIRS" || true)
+            # Build the exclude pattern more carefully
+            EXCLUDE_PATTERN=""
+            if [ "$EXCLUDE_DIRS_ARRAY" != "[]" ]; then
+              # Process each exclude pattern individually
+              PATTERN_COUNT=$(echo "$EXCLUDE_DIRS_ARRAY" | yq 'length')
+              PATTERNS=""
+
+              for k in $(seq 0 $((PATTERN_COUNT - 1))); do
+                PATTERN=$(echo "$EXCLUDE_DIRS_ARRAY" | yq ".[$k]" | tr -d '"')
+                echo "    Processing exclude pattern: '$PATTERN'"
+
+                # Handle different pattern types
+                case "$PATTERN" in
+                  */*)
+                    # Pattern with slashes - treat as path pattern
+                    if [[ "$PATTERN" == /* ]]; then
+                      # Starts with slash, use as-is but escape special chars
+                      ESCAPED_PATTERN=$(echo "$PATTERN" | sed 's/[[\.*^$()+{}|]/\\&/g')
+                    else
+                      # Add leading slash and treat trailing slash specially
+                      if [[ "$PATTERN" == */ ]]; then
+                        # Ends with slash - match directory component
+                        DIR_NAME=${PATTERN%/}
+                        ESCAPED_PATTERN="/${DIR_NAME}(/|$)"
+                      else
+                        # Has slash but doesn't end with one
+                        ESCAPED_PATTERN="/$(echo "$PATTERN" | sed 's/[[\.*^$()+{}|]/\\&/g')"
+                      fi
+                    fi
+                    ;;
+                  *)
+                    # Simple directory name - match as path component
+                    ESCAPED_PATTERN="/${PATTERN}(/|$)"
+                    ;;
+                esac
+
+                echo "    Escaped pattern: '$ESCAPED_PATTERN'"
+
+                if [ -z "$PATTERNS" ]; then
+                  PATTERNS="$ESCAPED_PATTERN"
+                else
+                  PATTERNS="$PATTERNS|$ESCAPED_PATTERN"
+                fi
+              done
+
+              EXCLUDE_PATTERN="$PATTERNS"
+              echo "    Final exclude pattern: '$EXCLUDE_PATTERN'"
+            fi
+
+            # Get packages and apply exclusions
+            ALL_PACKAGES=$(go list ./... 2>/dev/null || true)
+            echo "    All packages found:"
+            echo "$ALL_PACKAGES" | while read pkg; do echo "      $pkg"; done
+
+            if [ -n "$EXCLUDE_PATTERN" ] && [ -n "$ALL_PACKAGES" ]; then
+              echo "    Applying exclusion pattern: $EXCLUDE_PATTERN"
+              INCLUDED_PACKAGES=$(echo "$ALL_PACKAGES" | grep -vE "$EXCLUDE_PATTERN" || true)
+              echo "    Packages after exclusion:"
+              echo "$INCLUDED_PACKAGES" | while read pkg; do [ -n "$pkg" ] && echo "      $pkg"; done
+              echo "    Original packages: $(echo "$ALL_PACKAGES" | wc -l)"
+              echo "    Included packages: $(echo "$INCLUDED_PACKAGES" | wc -l)"
             else
-              INCLUDED_PACKAGES=$(go list ./...)
+              INCLUDED_PACKAGES="$ALL_PACKAGES"
+              echo "    No exclusion pattern applied"
             fi
 
             STATUS="ok"
@@ -70,6 +131,7 @@ jobs:
             if [ -n "$INCLUDED_PACKAGES" ] && go test -coverprofile=coverage_raw.out $INCLUDED_PACKAGES; then
               cp coverage_raw.out coverage.out
 
+              # Remove excluded files from coverage
               FILE_COUNT=$(echo "$EXCLUDE_FILES" | yq 'length')
               for j in $(seq 0 $((FILE_COUNT - 1))); do
                 FILE=$(echo "$EXCLUDE_FILES" | yq ".[$j]" | tr -d '"')
@@ -103,15 +165,6 @@ jobs:
           cd ..
           sed -i '$ s/,$//' _temp_coverage.json
           echo "]" >> _temp_coverage.json
-
-      - name: Wrap coverage.json with run_url
-        run: |
-          RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-
-          jq -n \
-            --arg run_url "$RUN_URL" \
-            --argjson data "$(cat _temp_coverage.json)" \
-            '{run_url: $run_url, data: $data}' > coverage.json
 
       - name: Commit and push updated coverage.json
         run: |
