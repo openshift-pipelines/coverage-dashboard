@@ -1,34 +1,34 @@
 {
-  "run_url": "https://github.com/openshift-pipelines/coverage-dashboard/actions/runs/17836279402",
+  "run_url": "https://github.com/openshift-pipelines/coverage-dashboard/actions/runs/17840664932",
   "data": [
     {
+      "repo": "openshift-pipelines/pipelines-as-code",
+      "coverage": 72.3,
+      "status": "ok"
+    },
+    {
       "repo": "tektoncd/results",
-      "coverage": 46.7,
+      "coverage": 53.3,
       "status": "ok"
     },
     {
       "repo": "tektoncd/pipeline",
-      "coverage": 66.4,
+      "coverage": 68.5,
       "status": "ok"
     },
     {
       "repo": "tektoncd/operator",
-      "coverage": 31.1,
+      "coverage": 31.6,
       "status": "ok"
     },
     {
       "repo": "tektoncd/chains",
       "coverage": 63.7,
-      "status": "ok"
+      "status": "failed"
     },
     {
       "repo": "tektoncd/triggers",
       "coverage": 50.1,
-      "status": "failed"
-    },
-    {
-      "repo": "openshift-pipelines/pipelines-as-code",
-      "coverage": null,
       "status": "failed"
     }
   ]
