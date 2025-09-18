@@ -85,7 +85,7 @@
 				
 				<option value="file14">github.com/tektoncd/operator/pkg/apis/operator/v1alpha1/manualapprovalgate_types.go (0.0%)</option>
 				
-				<option value="file15">github.com/tektoncd/operator/pkg/apis/operator/v1alpha1/openshiftpipelinesascode_defaults.go (68.2%)</option>
+				<option value="file15">github.com/tektoncd/operator/pkg/apis/operator/v1alpha1/openshiftpipelinesascode_defaults.go (81.7%)</option>
 				
 				<option value="file16">github.com/tektoncd/operator/pkg/apis/operator/v1alpha1/openshiftpipelinesascode_lifecycle.go (50.0%)</option>
 				
@@ -1888,6 +1888,10 @@ package v1alpha1
 import (
         "context"
         "fmt"
+        "reflect"
+        "strconv"
+        "strings"
+        "sync"
 
         pacSettings "github.com/openshift-pipelines/pipelines-as-code/pkg/params/settings"
         "go.uber.org/zap"
@@ -1915,7 +1919,18 @@ func (set *PACSettings) setPACDefaults(logger *zap.SugaredLogger) <span class="c
         if err != nil </span><span class="cov0" title="0">{
                 logger.Error("error on applying default PAC settings", err)
         }</span>
-        <span class="cov8" title="1">set.Settings = pacSettings.ConvertPacStructToConfigMap(&amp;defaultPacSettings)
+
+        // Remove tektonhub catalog to only keep artifacthub
+        <span class="cov8" title="1">defaultPacSettings.HubCatalogs.Delete("tektonhub")
+
+        // Override the default ArtifactHub URL to use https://artifacthub.io instead of https://artifacthub.io/api/v1
+        if defaultCatalog, ok := defaultPacSettings.HubCatalogs.Load("default"); ok </span><span class="cov8" title="1">{
+                catalog := defaultCatalog.(pacSettings.HubCatalog)
+                catalog.URL = "https://artifacthub.io"
+                defaultPacSettings.HubCatalogs.Store("default", catalog)
+        }</span>
+
+        <span class="cov8" title="1">set.Settings = ConvertPacStructToConfigMap(&amp;defaultPacSettings)
         setAdditionalPACControllerDefault(set.AdditionalPACControllers)</span>
 }
 
@@ -1933,6 +1948,62 @@ func setAdditionalPACControllerDefault(additionalPACController map[string]Additi
                 }</span>
                 <span class="cov8" title="1">additionalPACController[name] = additionalPACInfo</span>
         }
+}
+
+func ConvertPacStructToConfigMap(settings *pacSettings.Settings) map[string]string <span class="cov8" title="1">{
+        config := map[string]string{}
+        if settings == nil </span><span class="cov0" title="0">{
+                return config
+        }</span>
+        <span class="cov8" title="1">structValue := reflect.ValueOf(settings).Elem()
+        structType := reflect.TypeOf(settings).Elem()
+
+        for i := 0; i &lt; structType.NumField(); i++ </span><span class="cov8" title="1">{
+                field := structType.Field(i)
+                fieldName := field.Name
+
+                jsonTag := field.Tag.Get("json")
+                if jsonTag == "-" </span><span class="cov0" title="0">{
+                        continue</span>
+                }
+                <span class="cov8" title="1">key := strings.ToLower(jsonTag)
+                element := structValue.FieldByName(fieldName)
+                if !element.IsValid() </span><span class="cov0" title="0">{
+                        continue</span>
+                }
+
+                //nolint
+                <span class="cov8" title="1">switch field.Type.Kind() </span>{
+                case reflect.String:<span class="cov8" title="1">
+                        config[key] = element.String()</span>
+                case reflect.Bool:<span class="cov8" title="1">
+                        config[key] = strconv.FormatBool(element.Bool())</span>
+                case reflect.Int:<span class="cov8" title="1">
+                        config[key] = strconv.FormatInt(element.Int(), 10)</span>
+                case reflect.Ptr:<span class="cov8" title="1">
+                        // for hub catalogs map
+                        if key == "" </span><span class="cov8" title="1">{
+                                data := element.Interface().(*sync.Map)
+                                data.Range(func(key, value any) bool </span><span class="cov8" title="1">{
+                                        catalogData := value.(pacSettings.HubCatalog)
+                                        if key == "default" </span><span class="cov8" title="1">{
+                                                config[pacSettings.HubURLKey] = catalogData.URL
+                                                config[pacSettings.HubCatalogTypeKey] = catalogData.Type
+                                                return true
+                                        }</span>
+                                        <span class="cov8" title="1">config[fmt.Sprintf("%s-%s-%s", "catalog", catalogData.Index, "id")] = key.(string)
+                                        config[fmt.Sprintf("%s-%s-%s", "catalog", catalogData.Index, "name")] = catalogData.Name
+                                        config[fmt.Sprintf("%s-%s-%s", "catalog", catalogData.Index, "url")] = catalogData.URL
+                                        return true</span>
+                                })
+                        }
+                default:<span class="cov0" title="0">
+                        // Skip unsupported field types
+                        continue</span>
+                }
+        }
+
+        <span class="cov8" title="1">return config</span>
 }
 </pre>
 		
@@ -39234,12 +39305,12 @@ func updateAdditionControllerConfigMap(config v1alpha1.AdditionalPACControllerCo
 
                 <span class="cov8" title="1">defaultPacSettings := pacSettings.DefaultSettings()
                 err := pacSettings.SyncConfig(zap.NewNop().Sugar(), &amp;defaultPacSettings, config.Settings, pacSettings.DefaultValidators())
-                config.Settings = pacSettings.ConvertPacStructToConfigMap(&amp;defaultPacSettings)
                 if err != nil </span><span class="cov0" title="0">{
                         return err
                 }</span>
+                <span class="cov8" title="1">config.Settings = v1alpha1.ConvertPacStructToConfigMap(&amp;defaultPacSettings)
 
-                <span class="cov8" title="1">cm := &amp;corev1.ConfigMap{}
+                cm := &amp;corev1.ConfigMap{}
                 err = runtime.DefaultUnstructuredConverter.FromUnstructured(u.Object, cm)
                 if err != nil </span><span class="cov0" title="0">{
                         return err
