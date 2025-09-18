@@ -947,7 +947,7 @@
 				
 				<option value="file445">github.com/tektoncd/pipeline/pkg/reconciler/pipelinerun/resources/pipelinerunstate.go (98.2%)</option>
 				
-				<option value="file446">github.com/tektoncd/pipeline/pkg/reconciler/pipelinerun/resources/resultrefresolution.go (98.4%)</option>
+				<option value="file446">github.com/tektoncd/pipeline/pkg/reconciler/pipelinerun/resources/resultrefresolution.go (99.2%)</option>
 				
 				<option value="file447">github.com/tektoncd/pipeline/pkg/reconciler/pipelinerun/resources/validate_dependencies.go (100.0%)</option>
 				
@@ -1787,7 +1787,7 @@ func (rr *realRunner) Run(ctx context.Context, args ...string) error <span class
 
         // Start defined command
         <span class="cov8" title="1">if err := cmd.Start(); err != nil </span><span class="cov8" title="1">{
-                if errors.Is(ctx.Err(), context.DeadlineExceeded) </span><span class="cov0" title="0">{
+                if errors.Is(ctx.Err(), context.DeadlineExceeded) </span><span class="cov8" title="1">{
                         return entrypoint.ErrContextDeadlineExceeded
                 }</span>
                 <span class="cov8" title="1">if errors.Is(ctx.Err(), context.Canceled) </span><span class="cov8" title="1">{
@@ -1811,7 +1811,7 @@ func (rr *realRunner) Run(ctx context.Context, args ...string) error <span class
         // cmd.Wait prefer Process error over context error
         // but we want to return context error instead
         <span class="cov8" title="1">if err := cmd.Wait(); err != nil </span><span class="cov8" title="1">{
-                if errors.Is(ctx.Err(), context.DeadlineExceeded) </span><span class="cov8" title="1">{
+                if errors.Is(ctx.Err(), context.DeadlineExceeded) </span><span class="cov0" title="0">{
                         return entrypoint.ErrContextDeadlineExceeded
                 }</span>
                 <span class="cov8" title="1">if errors.Is(ctx.Err(), context.Canceled) </span><span class="cov8" title="1">{
@@ -65275,7 +65275,7 @@ func removeDup(refs ResolvedResultRefs) ResolvedResultRefs <span class="cov8" ti
                 if order[i].PipelineTask &gt; order[j].PipelineTask </span><span class="cov0" title="0">{
                         return false
                 }</span>
-                <span class="cov8" title="1">if order[i].Result &gt; order[j].Result </span><span class="cov0" title="0">{
+                <span class="cov8" title="1">if order[i].Result &gt; order[j].Result </span><span class="cov8" title="1">{
                         return false
                 }</span>
                 <span class="cov8" title="1">return true</span>
