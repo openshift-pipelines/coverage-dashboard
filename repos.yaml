@@ -60,3 +60,15 @@ repositories:
     exclude_files:
       - zz_generated.deepcopy.go
       - openapi_generated.go
+
+  - name: openshift-pipelines/pipelines-as-code
+    exclude_dirs:
+      - cmd/
+      - vendor/
+      - hack/
+      - proto/
+      - test/
+      - /fake(/|$)
+    exclude_files:
+      - zz_generated.deepcopy.go
+      - openapi_generated.go
