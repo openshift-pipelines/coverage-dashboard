@@ -166,6 +166,15 @@ jobs:
           sed -i '$ s/,$//' _temp_coverage.json
           echo "]" >> _temp_coverage.json
 
+      - name: Wrap coverage.json with run_url
+        run: |
+          RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+
+          jq -n \
+            --arg run_url "$RUN_URL" \
+            --argjson data "$(cat _temp_coverage.json)" \
+            '{run_url: $run_url, data: $data}' > coverage.json
+
       - name: Commit and push updated coverage.json
         run: |
           cp coverage.json gh-pages/coverage.json
