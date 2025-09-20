@@ -215,7 +215,7 @@
 				
 				<option value="file79">github.com/openshift-pipelines/pipelines-as-code/pkg/kubeinteraction/wait.go (75.0%)</option>
 				
-				<option value="file80">github.com/openshift-pipelines/pipelines-as-code/pkg/matcher/annotation_matcher.go (94.0%)</option>
+				<option value="file80">github.com/openshift-pipelines/pipelines-as-code/pkg/matcher/annotation_matcher.go (93.4%)</option>
 				
 				<option value="file81">github.com/openshift-pipelines/pipelines-as-code/pkg/matcher/annotation_tasks_install.go (89.0%)</option>
 				
@@ -269,7 +269,7 @@
 				
 				<option value="file106">github.com/openshift-pipelines/pipelines-as-code/pkg/pipelineascode/match.go (82.9%)</option>
 				
-				<option value="file107">github.com/openshift-pipelines/pipelines-as-code/pkg/pipelineascode/pipelineascode.go (66.1%)</option>
+				<option value="file107">github.com/openshift-pipelines/pipelines-as-code/pkg/pipelineascode/pipelineascode.go (63.9%)</option>
 				
 				<option value="file108">github.com/openshift-pipelines/pipelines-as-code/pkg/pipelineascode/secret.go (81.8%)</option>
 				
@@ -7174,6 +7174,7 @@ import (
         apipac "github.com/openshift-pipelines/pipelines-as-code/pkg/apis/pipelinesascode/v1alpha1"
         pacerrors "github.com/openshift-pipelines/pipelines-as-code/pkg/errors"
         "github.com/openshift-pipelines/pipelines-as-code/pkg/events"
+        "github.com/openshift-pipelines/pipelines-as-code/pkg/formatting"
         "github.com/openshift-pipelines/pipelines-as-code/pkg/opscomments"
         "github.com/openshift-pipelines/pipelines-as-code/pkg/params"
         "github.com/openshift-pipelines/pipelines-as-code/pkg/params/info"
@@ -7184,6 +7185,8 @@ import (
         "github.com/google/cel-go/common/types"
         tektonv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
         "go.uber.org/zap"
+        metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+        "knative.dev/pkg/apis"
 )
 
 const (
@@ -7529,10 +7532,75 @@ func MatchPipelinerunByAnnotation(ctx context.Context, logger *zap.SugaredLogger
         }</span>
 
         <span class="cov8" title="1">if len(matchedPRs) &gt; 0 </span><span class="cov8" title="1">{
-                return matchedPRs, nil
-        }</span>
+                // Filter out templates that already have successful PipelineRuns for /retest and /ok-to-test
+                if event.EventType == opscomments.RetestAllCommentEventType.String() ||
+                        event.EventType == opscomments.OkToTestCommentEventType.String() </span><span class="cov0" title="0">{
+                        return filterSuccessfulTemplates(ctx, logger, cs, event, repo, matchedPRs), nil
+                }</span>
+                <span class="cov8" title="1">return matchedPRs, nil</span>
+        }
 
         <span class="cov8" title="1">return nil, fmt.Errorf("%s", buildAvailableMatchingAnnotationErr(event, pruns))</span>
+}
+
+// filterSuccessfulTemplates filters out templates that already have successful PipelineRuns
+// when executing /ok-to-test or /retest gitops commands, implementing per-template checking.
+func filterSuccessfulTemplates(ctx context.Context, logger *zap.SugaredLogger, cs *params.Run, event *info.Event, repo *apipac.Repository, matchedPRs []Match) []Match <span class="cov8" title="1">{
+        if event.SHA == "" </span><span class="cov8" title="1">{
+                return matchedPRs
+        }</span>
+
+        // Get all existing PipelineRuns for this SHA
+        <span class="cov8" title="1">labelSelector := fmt.Sprintf("%s=%s", keys.SHA, formatting.CleanValueKubernetes(event.SHA))
+        existingPRs, err := cs.Clients.Tekton.TektonV1().PipelineRuns(repo.GetNamespace()).List(ctx, metav1.ListOptions{
+                LabelSelector: labelSelector,
+        })
+        if err != nil </span><span class="cov0" title="0">{
+                logger.Errorf("failed to list existing PipelineRuns for SHA %s: %v", event.SHA, err)
+                return matchedPRs // Return all templates if we can't check
+        }</span>
+
+        // Create a map of template names to their most recent successful run
+        <span class="cov8" title="1">successfulTemplates := make(map[string]*tektonv1.PipelineRun)
+
+        for i := range existingPRs.Items </span><span class="cov8" title="1">{
+                pr := &amp;existingPRs.Items[i]
+
+                // Get the original template name this PipelineRun came from
+                originalPRName, ok := pr.GetAnnotations()[keys.OriginalPRName]
+                if !ok </span><span class="cov8" title="1">{
+                        originalPRName, ok = pr.GetLabels()[keys.OriginalPRName]
+                }</span>
+                <span class="cov8" title="1">if !ok </span><span class="cov8" title="1">{
+                        continue</span> // Skip PipelineRuns without template identification
+                }
+
+                // Check if this PipelineRun succeeded
+                <span class="cov8" title="1">if pr.Status.GetCondition(apis.ConditionSucceeded).IsTrue() </span><span class="cov8" title="1">{
+                        // Keep the most recent successful run for each template
+                        if existing, exists := successfulTemplates[originalPRName]; !exists ||
+                                pr.CreationTimestamp.After(existing.CreationTimestamp.Time) </span><span class="cov8" title="1">{
+                                successfulTemplates[originalPRName] = pr
+                        }</span>
+                }
+        }
+
+        // Filter out templates that have successful runs
+        <span class="cov8" title="1">var filteredPRs []Match
+
+        for _, match := range matchedPRs </span><span class="cov8" title="1">{
+                templateName := getName(match.PipelineRun)
+
+                if successfulPR, hasSuccessfulRun := successfulTemplates[templateName]; hasSuccessfulRun </span><span class="cov8" title="1">{
+                        logger.Infof("skipping template '%s' for sha %s as it already has a successful pipelinerun '%s'",
+                                templateName, event.SHA, successfulPR.Name)
+                }</span> else<span class="cov8" title="1"> {
+                        filteredPRs = append(filteredPRs, match)
+                }</span>
+        }
+
+        // Return the filtered list (which may be empty if all templates were skipped)
+        <span class="cov8" title="1">return filteredPRs</span>
 }
 
 func buildAvailableMatchingAnnotationErr(event *info.Event, pruns []*tektonv1.PipelineRun) string <span class="cov8" title="1">{
@@ -10802,14 +10870,22 @@ func NewPacs(event *info.Event, vcx provider.Interface, run *params.Run, pacInfo
 }</span>
 
 func (p *PacRun) Run(ctx context.Context) error <span class="cov8" title="1">{
-        matchedPRs, repo, err := p.matchRepoPR(ctx)
-        if repo != nil &amp;&amp; p.event.TriggerTarget == triggertype.PullRequestClosed </span><span class="cov0" title="0">{
-                if err := p.cancelAllInProgressBelongingToClosedPullRequest(ctx, repo); err != nil </span><span class="cov0" title="0">{
-                        return fmt.Errorf("error cancelling in progress pipelineRuns belonging to pull request %d: %w", p.event.PullRequestNumber, err)
+        // For PullRequestClosed events, skip matching logic and go straight to cancellation
+        if p.event.TriggerTarget == triggertype.PullRequestClosed </span><span class="cov0" title="0">{
+                repo, err := p.verifyRepoAndUser(ctx)
+                if err != nil </span><span class="cov0" title="0">{
+                        return err
                 }</span>
+                <span class="cov0" title="0">if repo != nil </span><span class="cov0" title="0">{
+                        if err := p.cancelAllInProgressBelongingToClosedPullRequest(ctx, repo); err != nil </span><span class="cov0" title="0">{
+                                return fmt.Errorf("error cancelling in progress pipelineRuns belonging to pull request %d: %w", p.event.PullRequestNumber, err)
+                        }</span>
+                }
                 <span class="cov0" title="0">return nil</span>
         }
-        <span class="cov8" title="1">if err != nil </span><span class="cov8" title="1">{
+
+        <span class="cov8" title="1">matchedPRs, repo, err := p.matchRepoPR(ctx)
+        if err != nil </span><span class="cov8" title="1">{
                 createStatusErr := p.vcx.CreateStatus(ctx, p.event, provider.StatusOpts{
                         Status:     CompletedStatus,
                         Conclusion: failureConclusion,
