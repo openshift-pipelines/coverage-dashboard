@@ -623,7 +623,7 @@
 				
 				<option value="file283">github.com/tektoncd/operator/pkg/reconciler/openshift/namespace/controller.go (0.0%)</option>
 				
-				<option value="file284">github.com/tektoncd/operator/pkg/reconciler/openshift/namespace/namespace.go (0.0%)</option>
+				<option value="file284">github.com/tektoncd/operator/pkg/reconciler/openshift/namespace/namespace.go (26.1%)</option>
 				
 				<option value="file285">github.com/tektoncd/operator/pkg/reconciler/openshift/openshiftpipelinesascode/controller.go (0.0%)</option>
 				
@@ -37725,28 +37725,28 @@ func (ac *reconciler) Path() string <span class="cov0" title="0">{
 }</span>
 
 // Admit implements AdmissionController
-func (ac *reconciler) Admit(ctx context.Context, request *admissionv1.AdmissionRequest) *admissionv1.AdmissionResponse <span class="cov0" title="0">{
+func (ac *reconciler) Admit(ctx context.Context, request *admissionv1.AdmissionRequest) *admissionv1.AdmissionResponse <span class="cov8" title="1">{
         if ac.withContext != nil </span><span class="cov0" title="0">{
                 ctx = ac.withContext(ctx)
         }</span>
 
-        <span class="cov0" title="0">logger := logging.FromContext(ctx)
+        <span class="cov8" title="1">logger := logging.FromContext(ctx)
 
         // Need to handle both, create and update operations for a namespace
         switch request.Operation </span>{
-        case admissionv1.Create, admissionv1.Update:<span class="cov0" title="0"></span>
-        default:<span class="cov0" title="0">
+        case admissionv1.Create, admissionv1.Update:<span class="cov8" title="1"></span>
+        default:<span class="cov8" title="1">
                 logger.Info("Unhandled webhook operation, letting it through ", request.Operation)
                 return &amp;admissionv1.AdmissionResponse{Allowed: true}</span>
         }
 
-        <span class="cov0" title="0">isAllowed, status, err := ac.admissionAllowed(ctx, request)
+        <span class="cov8" title="1">isAllowed, status, err := ac.admissionAllowed(ctx, request)
         if err != nil </span><span class="cov0" title="0">{
                 return webhook.MakeErrorStatus("admission failed for namespace %v", err)
         }</span>
 
         // Something in status means that admission isn't allowed
-        <span class="cov0" title="0">if status != nil </span><span class="cov0" title="0">{
+        <span class="cov8" title="1">if status != nil </span><span class="cov0" title="0">{
                 return &amp;admissionv1.AdmissionResponse{
                         // isAllowed should be false here always
                         Allowed: isAllowed,
@@ -37754,13 +37754,13 @@ func (ac *reconciler) Admit(ctx context.Context, request *admissionv1.AdmissionR
                 }
         }</span>
 
-        <span class="cov0" title="0">return &amp;admissionv1.AdmissionResponse{
+        <span class="cov8" title="1">return &amp;admissionv1.AdmissionResponse{
                 // At this point, isAllowed should always be true
                 Allowed: isAllowed,
         }</span>
 }
 
-func (ac *reconciler) admissionAllowed(ctx context.Context, req *admissionv1.AdmissionRequest) (bool, *metav1.Status, error) <span class="cov0" title="0">{
+func (ac *reconciler) admissionAllowed(ctx context.Context, req *admissionv1.AdmissionRequest) (bool, *metav1.Status, error) <span class="cov8" title="1">{
         kind := req.Kind
         namespaceRawBytes := req.Object.Raw
 
@@ -37772,27 +37772,27 @@ func (ac *reconciler) admissionAllowed(ctx context.Context, req *admissionv1.Adm
         }
 
         logger := logging.FromContext(ctx)
-        if gvk.Group != "" || gvk.Version != "v1" || gvk.Kind != "Namespace" </span><span class="cov0" title="0">{
+        if gvk.Group != "" || gvk.Version != "v1" || gvk.Kind != "Namespace" </span><span class="cov8" title="1">{
                 logger.Error("Unhandled kind: ", gvk)
                 return false, nil, fmt.Errorf("unhandled kind: %v", gvk)
         }</span>
 
         // nil values denote absence of `old` (create) or `new` (delete) objects.
-        <span class="cov0" title="0">var namespaceObject corev1.Namespace
+        <span class="cov8" title="1">var namespaceObject corev1.Namespace
 
-        if len(namespaceRawBytes) != 0 </span><span class="cov0" title="0">{
+        if len(namespaceRawBytes) != 0 </span><span class="cov8" title="1">{
                 newDecoder := json.NewDecoder(bytes.NewBuffer(namespaceRawBytes))
                 if ac.disallowUnknownFields </span><span class="cov0" title="0">{
                         newDecoder.DisallowUnknownFields()
                 }</span>
-                <span class="cov0" title="0">if err := newDecoder.Decode(&amp;namespaceObject); err != nil </span><span class="cov0" title="0">{
+                <span class="cov8" title="1">if err := newDecoder.Decode(&amp;namespaceObject); err != nil </span><span class="cov0" title="0">{
                         return false, nil, fmt.Errorf("cannot decode incoming new object: %w", err)
                 }</span>
         }
 
-        <span class="cov0" title="0">nsSCC := namespaceObject.Annotations[openshift.NamespaceSCCAnnotation]
+        <span class="cov8" title="1">nsSCC := namespaceObject.Annotations[openshift.NamespaceSCCAnnotation]
         // If no annotation in namespace, then nothing to do here
-        if nsSCC == "" </span><span class="cov0" title="0">{
+        if nsSCC == "" </span><span class="cov8" title="1">{
                 return true, nil, nil
         }</span>
 
@@ -37883,6 +37883,13 @@ func (ac *reconciler) reconcileValidatingWebhook(ctx context.Context, caCert []b
                                         Key:      "control-plane",
                                         Operator: metav1.LabelSelectorOpDoesNotExist,
                                 },
+                        },
+                }
+                // Exclude system namespaces
+                webhook.Webhooks[i].MatchConditions = []admissionregistrationv1.MatchCondition{
+                        {
+                                Name:       "exclude-system-namespaces",
+                                Expression: "!(object.metadata.name.startsWith('kube-') || object.metadata.name.startsWith('openshift-'))",
                         },
                 }
 
