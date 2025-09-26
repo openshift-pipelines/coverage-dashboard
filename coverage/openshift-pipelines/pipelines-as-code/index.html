@@ -119,7 +119,7 @@
 				
 				<option value="file31">github.com/openshift-pipelines/pipelines-as-code/pkg/customparams/standard.go (83.3%)</option>
 				
-				<option value="file32">github.com/openshift-pipelines/pipelines-as-code/pkg/events/emit.go (73.3%)</option>
+				<option value="file32">github.com/openshift-pipelines/pipelines-as-code/pkg/events/emit.go (70.6%)</option>
 				
 				<option value="file33">github.com/openshift-pipelines/pipelines-as-code/pkg/formatting/age.go (100.0%)</option>
 				
@@ -325,7 +325,7 @@
 				
 				<option value="file134">github.com/openshift-pipelines/pipelines-as-code/pkg/provider/gitlab/detect.go (90.0%)</option>
 				
-				<option value="file135">github.com/openshift-pipelines/pipelines-as-code/pkg/provider/gitlab/gitlab.go (83.6%)</option>
+				<option value="file135">github.com/openshift-pipelines/pipelines-as-code/pkg/provider/gitlab/gitlab.go (83.5%)</option>
 				
 				<option value="file136">github.com/openshift-pipelines/pipelines-as-code/pkg/provider/gitlab/parse_payload.go (82.5%)</option>
 				
@@ -3905,20 +3905,24 @@ func (e *EventEmitter) EmitMessage(repo *v1alpha1.Repository, loggerLevel zapcor
         if repo != nil </span><span class="cov8" title="1">{
                 event := makeEvent(repo, loggerLevel, reason, message)
                 if _, err := e.client.CoreV1().Events(event.Namespace).Create(context.Background(), event, metav1.CreateOptions{}); err != nil </span><span class="cov0" title="0">{
-                        e.logger.Infof("Cannot create event: %s", err.Error())
-                }</span>
+                        if e.logger != nil </span><span class="cov0" title="0">{
+                                e.logger.Infof("Cannot create event: %s", err.Error())
+                        }</span>
+                }
         }
 
-        //nolint
-        <span class="cov8" title="1">switch loggerLevel </span>{
-        case zapcore.DebugLevel:<span class="cov0" title="0">
-                e.logger.Debug(message)</span>
-        case zapcore.ErrorLevel:<span class="cov8" title="1">
-                e.logger.Error(message)</span>
-        case zapcore.InfoLevel:<span class="cov8" title="1">
-                e.logger.Info(message)</span>
-        case zapcore.WarnLevel:<span class="cov0" title="0">
-                e.logger.Warn(message)</span>
+        <span class="cov8" title="1">if e.logger != nil </span><span class="cov8" title="1">{
+                //nolint
+                switch loggerLevel </span>{
+                case zapcore.DebugLevel:<span class="cov0" title="0">
+                        e.logger.Debug(message)</span>
+                case zapcore.ErrorLevel:<span class="cov8" title="1">
+                        e.logger.Error(message)</span>
+                case zapcore.InfoLevel:<span class="cov8" title="1">
+                        e.logger.Info(message)</span>
+                case zapcore.WarnLevel:<span class="cov0" title="0">
+                        e.logger.Warn(message)</span>
+                }
         }
 }
 
@@ -17124,10 +17128,12 @@ func (v *Provider) SetClient(_ context.Context, run *params.Run, runevent *info.
         }</span>
         <span class="cov8" title="1">v.apiURL = apiURL
 
-        v.gitlabClient, err = gitlab.NewClient(runevent.Provider.Token, gitlab.WithBaseURL(apiURL))
-        if err != nil </span><span class="cov0" title="0">{
-                return err
-        }</span>
+        if v.gitlabClient == nil </span><span class="cov0" title="0">{
+                v.gitlabClient, err = gitlab.NewClient(runevent.Provider.Token, gitlab.WithBaseURL(apiURL))
+                if err != nil </span><span class="cov0" title="0">{
+                        return err
+                }</span>
+        }
         <span class="cov8" title="1">v.Token = &amp;runevent.Provider.Token
 
         run.Clients.Log.Infof("gitlab: initialized for client with token for apiURL=%s, org=%s, repo=%s", apiURL, runevent.Organization, runevent.Repository)
@@ -17139,6 +17145,19 @@ func (v *Provider) SetClient(_ context.Context, run *params.Run, runevent *info.
         if v.sourceProjectID == 0 &amp;&amp; runevent.SourceProjectID &gt; 0 </span><span class="cov8" title="1">{
                 v.sourceProjectID = runevent.SourceProjectID
         }</span>
+
+        // check that we have access to the source project if it's a private repo, this should only occur on Merge Requests
+        <span class="cov8" title="1">if runevent.TriggerTarget == triggertype.PullRequest </span><span class="cov8" title="1">{
+                _, resp, err := v.Client().Projects.GetProject(runevent.SourceProjectID, &amp;gitlab.GetProjectOptions{})
+                errmsg := fmt.Sprintf("failed to access GitLab source repository ID %d: please ensure token has 'read_repository' scope on that repository",
+                        runevent.SourceProjectID)
+                if resp != nil &amp;&amp; resp.StatusCode == http.StatusNotFound </span><span class="cov8" title="1">{
+                        return fmt.Errorf("%s", errmsg)
+                }</span>
+                <span class="cov8" title="1">if err != nil </span><span class="cov0" title="0">{
+                        return fmt.Errorf("%s: %w", errmsg, err)
+                }</span>
+        }
 
         // if we don't have sourceProjectID (ie: incoming-webhook) then try to set
         // it ASAP if we can.
@@ -17216,12 +17235,30 @@ func (v *Provider) CreateStatus(_ context.Context, event *info.Event, statusOpts
         // a status comment on it.
         // This would work on a push or an MR from a branch within the same repo.
         // Ignoring errors because of the write access issues,
-        if _, _, err := v.Client().Commits.SetCommitStatus(event.SourceProjectID, event.SHA, opt); err != nil </span><span class="cov8" title="1">{
-                v.eventEmitter.EmitMessage(v.repo, zap.ErrorLevel, "FailedToSetCommitStatus",
-                        "cannot set status with the GitLab token because of: "+err.Error())
+        _, _, err := v.Client().Commits.SetCommitStatus(event.SourceProjectID, event.SHA, opt)
+        if err != nil </span><span class="cov8" title="1">{
+                v.Logger.Debugf("cannot set status with the GitLab token on the source project: %v", err)
+        }</span> else<span class="cov8" title="1"> {
+                // we managed to set the status on the source repo, all good we are done
+                v.Logger.Debugf("created commit status on source project ID %d", event.TargetProjectID)
+                return nil
         }</span>
+        <span class="cov8" title="1">if _, _, err2 := v.Client().Commits.SetCommitStatus(event.TargetProjectID, event.SHA, opt); err2 == nil </span><span class="cov8" title="1">{
+                v.Logger.Debugf("created commit status on target project ID %d", event.TargetProjectID)
+                // we managed to set the status on the target repo, all good we are done
+                return nil
+        }</span>
+        <span class="cov8" title="1">v.Logger.Debugf("cannot set status with the GitLab token on the target project: %v", err)
+        // we only show the first error as it's likely something the user has more control to fix
+        // the second err is cryptic as it needs a dummy gitlab pipeline to start
+        // with and will only give more confusion in the event namespace
+        v.eventEmitter.EmitMessage(v.repo, zap.InfoLevel, "FailedToSetCommitStatus",
+                fmt.Sprintf("failed to create commit status: source project ID %d, target project ID %d. "+
+                        "If you want Gitlab Pipeline Status update, ensure your GitLab token giving it access "+
+                        "to the source repository. %v",
+                        event.SourceProjectID, event.TargetProjectID, err))
 
-        <span class="cov8" title="1">eventType := triggertype.IsPullRequestType(event.EventType)
+        eventType := triggertype.IsPullRequestType(event.EventType)
         // When a GitOps command is sent on a pushed commit, it mistakenly treats it as a pull_request
         // and attempts to create a note, but notes are not intended for pushed commits.
         if event.TriggerTarget == triggertype.PullRequest &amp;&amp; opscomments.IsAnyOpsEventType(event.EventType) </span><span class="cov0" title="0">{
