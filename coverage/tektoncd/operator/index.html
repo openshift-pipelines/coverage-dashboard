@@ -401,7 +401,7 @@
 				
 				<option value="file172">github.com/tektoncd/operator/pkg/reconciler/openshift/tektonresult/controller.go (0.0%)</option>
 				
-				<option value="file173">github.com/tektoncd/operator/pkg/reconciler/openshift/tektonresult/extension.go (50.0%)</option>
+				<option value="file173">github.com/tektoncd/operator/pkg/reconciler/openshift/tektonresult/extension.go (49.3%)</option>
 				
 				<option value="file174">github.com/tektoncd/operator/pkg/reconciler/openshift/tektontrigger/controller.go (0.0%)</option>
 				
@@ -5207,9 +5207,18 @@ func (tp *TektonResult) SetDefaults(ctx context.Context) <span class="cov8" titl
 }
 
 // Sets default values of Result
-func (c *Result) setDefaults() {<span class="cov8" title="1">
-        // TODO: Set the other default values for Result
-}</span>
+func (c *Result) setDefaults() <span class="cov8" title="1">{
+        // Set default values for route configuration
+        if c.RouteEnabled == nil </span><span class="cov8" title="1">{
+                // Default to true for OpenShift platforms to automatically create routes
+                enabled := IsOpenShiftPlatform()
+                c.RouteEnabled = &amp;enabled
+        }</span>
+
+        <span class="cov8" title="1">if c.RouteTLSTermination == "" </span><span class="cov8" title="1">{
+                c.RouteTLSTermination = "edge"
+        }</span>
+}
 </pre>
 		
 		<pre class="file" id="file39" style="display: none">/*
@@ -5474,6 +5483,13 @@ type ResultsAPIProperties struct {
         LoggingPluginQueryLimit             *uint  `json:"logging_plugin_query_limit,omitempty"`
         LoggingPluginQueryParams            string `json:"logging_plugin_query_params,omitempty"`
         LoggingPluginMultipartRegex         string `json:"logging_plugin_multipart_regex,omitempty"`
+
+        // Route configuration for Results API service exposure
+        RouteEnabled *bool  `json:"route_enabled,omitempty"`
+        RouteHost    string `json:"route_host,omitempty"`
+        RoutePath    string `json:"route_path,omitempty"`
+        // +optional
+        RouteTLSTermination string `json:"route_tls_termination,omitempty"`
 }
 
 // TektonResultStatus defines the observed state of TektonResult
@@ -19387,6 +19403,7 @@ func (r *Reconciler) transform(ctx context.Context, manifest *mf.Manifest, comp 
                 updateEnvWithDBSecretName(instance.Spec.ResultsAPIProperties),
                 populateGoogleCreds(instance.Spec.ResultsAPIProperties),
                 common.AddDeploymentRestrictedPSA(),
+                common.AddConfiguration(instance.Spec.Config),
                 common.AddStatefulSetRestrictedPSA(),
                 common.DeploymentImages(resultImgs),
                 common.DeploymentEnvVarKubernetesMinVersion(),
@@ -27789,6 +27806,7 @@ const (
         logsRBACYamlDirectory   = "static/tekton-results/logs-rbac"
         deploymentAPI           = "tekton-results-api"
         serviceAPI              = "tekton-results-api-service"
+        routeAPI                = "tekton-results-api"
         secretAPITLS            = "tekton-results-tls"
         apiContainerName        = "api"
         boundSAVolume           = "bound-sa-token"
@@ -27877,9 +27895,15 @@ func (oe *openshiftExtension) PreReconcile(ctx context.Context, tc v1alpha1.Tekt
 }
 
 func (oe openshiftExtension) PostReconcile(ctx context.Context, tc v1alpha1.TektonComponent) error <span class="cov0" title="0">{
-        mf := *oe.routeManifest
-        return oe.installerSetClient.PostSet(ctx, tc, &amp;mf, filterAndTransform())
-}</span>
+        manifest := *oe.routeManifest
+
+        result := tc.(*v1alpha1.TektonResult)
+        if !isEnableRoute(result) </span><span class="cov0" title="0">{
+                manifest = manifest.Filter(mf.Not(mf.ByKind("Route")))
+        }</span>
+
+        <span class="cov0" title="0">return oe.installerSetClient.PostSet(ctx, tc, &amp;manifest, filterAndTransform())</span>
+}
 
 func (oe openshiftExtension) Finalize(ctx context.Context, tc v1alpha1.TektonComponent) error <span class="cov0" title="0">{
         if err := oe.installerSetClient.CleanupPostSet(ctx); err != nil </span><span class="cov0" title="0">{
@@ -27923,6 +27947,7 @@ func getloggingRBACManifest() (*mf.Manifest, error) <span class="cov8" title="1"
 func filterAndTransform() client.FilterAndTransform <span class="cov0" title="0">{
         return func(ctx context.Context, manifest *mf.Manifest, comp v1alpha1.TektonComponent) (*mf.Manifest, error) </span><span class="cov0" title="0">{
                 resultImgs := common.ToLowerCaseKeys(common.ImagesFromEnv(common.ResultsImagePrefix))
+                instance := comp.(*v1alpha1.TektonResult)
 
                 extra := []mf.Transformer{
                         common.InjectOperandNameLabelOverwriteExisting(v1alpha1.OperandTektoncdResults),
@@ -27930,6 +27955,7 @@ func filterAndTransform() client.FilterAndTransform <span class="cov0" title="0"
                         common.AddStatefulSetRestrictedPSA(),
                         common.DeploymentImages(resultImgs),
                         common.StatefulSetImages(resultImgs),
+                        injectResultsAPIRoute(instance.Spec.ResultsAPIProperties),
                 }
 
                 if err := common.Transform(ctx, manifest, comp, extra...); err != nil </span><span class="cov0" title="0">{
@@ -28098,6 +28124,47 @@ func injectLokiStackTLSCACert(prop v1alpha1.LokiStackProperties) mf.Transformer 
                 }</span>
                 <span class="cov8" title="1">u.SetUnstructuredContent(uObj)
                 return nil</span>
+        }
+}
+
+// isEnableRoute determines if route should be enabled for results API
+func isEnableRoute(result *v1alpha1.TektonResult) bool <span class="cov0" title="0">{
+        // Default to false if not explicitly set
+        if result.Spec.RouteEnabled == nil </span><span class="cov0" title="0">{
+                return false
+        }</span>
+        <span class="cov0" title="0">return *result.Spec.RouteEnabled</span>
+}
+
+// injectResultsAPIRoute adds ResultSpec route properties to Results route
+func injectResultsAPIRoute(props v1alpha1.ResultsAPIProperties) mf.Transformer <span class="cov8" title="1">{
+        return func(u *unstructured.Unstructured) error </span><span class="cov8" title="1">{
+                if u.GetKind() != "Route" || u.GetName() != routeAPI </span><span class="cov0" title="0">{
+                        return nil
+                }</span>
+
+                // Apply custom host if specified
+                <span class="cov8" title="1">if props.RouteHost != "" </span><span class="cov8" title="1">{
+                        if err := unstructured.SetNestedField(u.Object, props.RouteHost, "spec", "host"); err != nil </span><span class="cov0" title="0">{
+                                return err
+                        }</span>
+                }
+
+                // Apply custom path if specified
+                <span class="cov8" title="1">if props.RoutePath != "" </span><span class="cov8" title="1">{
+                        if err := unstructured.SetNestedField(u.Object, props.RoutePath, "spec", "path"); err != nil </span><span class="cov0" title="0">{
+                                return err
+                        }</span>
+                }
+
+                // Apply custom TLS termination if specified
+                <span class="cov8" title="1">if props.RouteTLSTermination != "" </span><span class="cov8" title="1">{
+                        if err := unstructured.SetNestedField(u.Object, props.RouteTLSTermination, "spec", "tls", "termination"); err != nil </span><span class="cov0" title="0">{
+                                return err
+                        }</span>
+                }
+
+                <span class="cov8" title="1">return nil</span>
         }
 }
 </pre>
