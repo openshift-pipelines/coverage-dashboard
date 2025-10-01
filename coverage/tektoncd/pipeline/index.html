@@ -123,7 +123,7 @@
 				
 				<option value="file33">github.com/tektoncd/pipeline/pkg/apis/pipeline/v1/pipelinerun_types.go (92.5%)</option>
 				
-				<option value="file34">github.com/tektoncd/pipeline/pkg/apis/pipeline/v1/pipelinerun_validation.go (93.4%)</option>
+				<option value="file34">github.com/tektoncd/pipeline/pkg/apis/pipeline/v1/pipelinerun_validation.go (93.5%)</option>
 				
 				<option value="file35">github.com/tektoncd/pipeline/pkg/apis/pipeline/v1/register.go (0.0%)</option>
 				
@@ -233,7 +233,7 @@
 				
 				<option value="file88">github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1/pipelinerun_types.go (89.8%)</option>
 				
-				<option value="file89">github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1/pipelinerun_validation.go (95.3%)</option>
+				<option value="file89">github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1/pipelinerun_validation.go (95.4%)</option>
 				
 				<option value="file90">github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1/provenance_conversion.go (100.0%)</option>
 				
@@ -431,7 +431,7 @@
 				
 				<option value="file187">github.com/tektoncd/pipeline/pkg/reconciler/pipelinerun/cancel.go (91.8%)</option>
 				
-				<option value="file188">github.com/tektoncd/pipeline/pkg/reconciler/pipelinerun/controller.go (82.1%)</option>
+				<option value="file188">github.com/tektoncd/pipeline/pkg/reconciler/pipelinerun/controller.go (85.3%)</option>
 				
 				<option value="file189">github.com/tektoncd/pipeline/pkg/reconciler/pipelinerun/pipelinerun.go (91.6%)</option>
 				
@@ -445,7 +445,7 @@
 				
 				<option value="file194">github.com/tektoncd/pipeline/pkg/reconciler/pipelinerun/resources/pipelinerunstate.go (98.2%)</option>
 				
-				<option value="file195">github.com/tektoncd/pipeline/pkg/reconciler/pipelinerun/resources/resultrefresolution.go (99.2%)</option>
+				<option value="file195">github.com/tektoncd/pipeline/pkg/reconciler/pipelinerun/resources/resultrefresolution.go (98.4%)</option>
 				
 				<option value="file196">github.com/tektoncd/pipeline/pkg/reconciler/pipelinerun/resources/validate_dependencies.go (100.0%)</option>
 				
@@ -461,7 +461,7 @@
 				
 				<option value="file202">github.com/tektoncd/pipeline/pkg/reconciler/resources.go (100.0%)</option>
 				
-				<option value="file203">github.com/tektoncd/pipeline/pkg/reconciler/taskrun/controller.go (85.7%)</option>
+				<option value="file203">github.com/tektoncd/pipeline/pkg/reconciler/taskrun/controller.go (88.2%)</option>
 				
 				<option value="file204">github.com/tektoncd/pipeline/pkg/reconciler/taskrun/resources/apply.go (99.2%)</option>
 				
@@ -7897,6 +7897,12 @@ type PipelineRunSpec struct {
         // +optional
         // +listType=atomic
         TaskRunSpecs []PipelineTaskRunSpec `json:"taskRunSpecs,omitempty"`
+        // ManagedBy indicates which controller is responsible for reconciling
+        // this resource. If unset or set to "tekton.dev/pipeline", the default
+        // Tekton controller will manage this resource.
+        // This field is immutable.
+        // +optional
+        ManagedBy *string `json:"managedBy,omitempty"`
 }
 
 // TimeoutFields allows granular specification of pipeline, task, and finally timeouts
@@ -8454,6 +8460,11 @@ func (ps *PipelineRunSpec) ValidateUpdate(ctx context.Context) (errs *apis.Field
         if !ok || oldObj == nil </span><span class="cov8" title="1">{
                 return
         }</span>
+
+        <span class="cov8" title="1">if (oldObj.Spec.ManagedBy == nil) != (ps.ManagedBy == nil) || (oldObj.Spec.ManagedBy != nil &amp;&amp; *oldObj.Spec.ManagedBy != *ps.ManagedBy) </span><span class="cov8" title="1">{
+                errs = errs.Also(apis.ErrInvalidValue("managedBy is immutable", "spec.managedBy"))
+        }</span>
+
         <span class="cov8" title="1">if oldObj.IsDone() </span><span class="cov8" title="1">{
                 // try comparing without any copying first
                 // this handles the common case where only finalizers changed
@@ -8478,10 +8489,10 @@ func (ps *PipelineRunSpec) ValidateUpdate(ctx context.Context) (errs *apis.Field
         // Handle started but not done case
         <span class="cov8" title="1">old := oldObj.Spec.DeepCopy()
         old.Status = ps.Status
+        old.ManagedBy = ps.ManagedBy // Already tested before
         if !equality.Semantic.DeepEqual(old, ps) </span><span class="cov8" title="1">{
                 errs = errs.Also(apis.ErrInvalidValue("Once the PipelineRun has started, only status updates are allowed", ""))
         }</span>
-
         <span class="cov8" title="1">return</span>
 }
 
@@ -10361,6 +10372,12 @@ type TaskRunSpec struct {
         SidecarSpecs []TaskRunSidecarSpec `json:"sidecarSpecs,omitempty"`
         // Compute resources to use for this TaskRun
         ComputeResources *corev1.ResourceRequirements `json:"computeResources,omitempty"`
+        // ManagedBy indicates which controller is responsible for reconciling
+        // this resource. If unset or set to "tekton.dev/pipeline", the default
+        // Tekton controller will manage this resource.
+        // This field is immutable.
+        // +optional
+        ManagedBy *string `json:"managedBy,omitempty"`
 }
 
 // TaskRunSpecStatus defines the TaskRun spec status the user can provide
@@ -10931,17 +10948,22 @@ func (ts *TaskRunSpec) ValidateUpdate(ctx context.Context) (errs *apis.FieldErro
         if !apis.IsInUpdate(ctx) </span><span class="cov8" title="1">{
                 return
         }</span>
+
         <span class="cov8" title="1">oldObj, ok := apis.GetBaseline(ctx).(*TaskRun)
         if !ok || oldObj == nil </span><span class="cov8" title="1">{
                 return
         }</span>
+
+        <span class="cov8" title="1">if (oldObj.Spec.ManagedBy == nil) != (ts.ManagedBy == nil) || (oldObj.Spec.ManagedBy != nil &amp;&amp; *oldObj.Spec.ManagedBy != *ts.ManagedBy) </span><span class="cov8" title="1">{
+                errs = errs.Also(apis.ErrInvalidValue("managedBy is immutable", "spec.managedBy"))
+        }</span>
+
         <span class="cov8" title="1">if oldObj.IsDone() </span><span class="cov8" title="1">{
                 // try comparing without any copying first
                 // this handles the common case where only finalizers changed
                 if equality.Semantic.DeepEqual(&amp;oldObj.Spec, ts) </span><span class="cov8" title="1">{
                         return nil // Specs identical, allow update
                 }</span>
-
                 // Specs differ, this could be due to different defaults after upgrade
                 // Apply current defaults to old spec to normalize
                 <span class="cov8" title="1">oldCopy := oldObj.Spec.DeepCopy()
@@ -10960,10 +10982,10 @@ func (ts *TaskRunSpec) ValidateUpdate(ctx context.Context) (errs *apis.FieldErro
         <span class="cov8" title="1">old := oldObj.Spec.DeepCopy()
         old.Status = ts.Status
         old.StatusMessage = ts.StatusMessage
+        old.ManagedBy = ts.ManagedBy // Already tested before
         if !equality.Semantic.DeepEqual(old, ts) </span><span class="cov8" title="1">{
                 errs = errs.Also(apis.ErrInvalidValue("Once the TaskRun has started, only status and statusMessage updates are allowed", ""))
         }</span>
-
         <span class="cov8" title="1">return</span>
 }
 
@@ -19019,6 +19041,12 @@ type PipelineRunSpec struct {
         // +optional
         // +listType=atomic
         TaskRunSpecs []PipelineTaskRunSpec `json:"taskRunSpecs,omitempty"`
+        // ManagedBy indicates which controller is responsible for reconciling
+        // this resource. If unset or set to "tekton.dev/pipeline", the default
+        // Tekton controller will manage this resource.
+        // This field is immutable.
+        // +optional
+        ManagedBy *string `json:"managedBy,omitempty"`
 }
 
 // TimeoutFields allows granular specification of pipeline, task, and finally timeouts
@@ -19532,6 +19560,11 @@ func (ps *PipelineRunSpec) ValidateUpdate(ctx context.Context) (errs *apis.Field
         if !ok || oldObj == nil </span><span class="cov8" title="1">{
                 return
         }</span>
+
+        <span class="cov8" title="1">if (oldObj.Spec.ManagedBy == nil) != (ps.ManagedBy == nil) || (oldObj.Spec.ManagedBy != nil &amp;&amp; *oldObj.Spec.ManagedBy != *ps.ManagedBy) </span><span class="cov8" title="1">{
+                errs = errs.Also(apis.ErrInvalidValue("managedBy is immutable", "spec.managedBy"))
+        }</span>
+
         <span class="cov8" title="1">if oldObj.IsDone() </span><span class="cov8" title="1">{
                 // try comparing without any copying first
                 // this handles the common case where only finalizers changed
@@ -19556,6 +19589,7 @@ func (ps *PipelineRunSpec) ValidateUpdate(ctx context.Context) (errs *apis.Field
         // Handle started but not done case
         <span class="cov8" title="1">old := oldObj.Spec.DeepCopy()
         old.Status = ps.Status
+        old.ManagedBy = ps.ManagedBy // Already tested before
         if !equality.Semantic.DeepEqual(old, ps) </span><span class="cov8" title="1">{
                 errs = errs.Also(apis.ErrInvalidValue("Once the PipelineRun has started, only status updates are allowed", ""))
         }</span>
@@ -23288,6 +23322,12 @@ type TaskRunSpec struct {
         SidecarOverrides []TaskRunSidecarOverride `json:"sidecarOverrides,omitempty"`
         // Compute resources to use for this TaskRun
         ComputeResources *corev1.ResourceRequirements `json:"computeResources,omitempty"`
+        // ManagedBy indicates which controller is responsible for reconciling
+        // this resource. If unset or set to "tekton.dev/pipeline", the default
+        // Tekton controller will manage this resource.
+        // This field is immutable.
+        // +optional
+        ManagedBy *string `json:"managedBy,omitempty"`
 }
 
 // TaskRunSpecStatus defines the TaskRun spec status the user can provide
@@ -23914,6 +23954,11 @@ func (ts *TaskRunSpec) ValidateUpdate(ctx context.Context) (errs *apis.FieldErro
         if !ok || oldObj == nil </span><span class="cov8" title="1">{
                 return
         }</span>
+
+        <span class="cov8" title="1">if (oldObj.Spec.ManagedBy == nil) != (ts.ManagedBy == nil) || (oldObj.Spec.ManagedBy != nil &amp;&amp; *oldObj.Spec.ManagedBy != *ts.ManagedBy) </span><span class="cov8" title="1">{
+                errs = errs.Also(apis.ErrInvalidValue("managedBy is immutable", "spec.managedBy"))
+        }</span>
+
         <span class="cov8" title="1">if oldObj.IsDone() </span><span class="cov8" title="1">{
                 // try comparing without any copying first
                 // this handles the common case where only finalizers changed
@@ -23939,6 +23984,7 @@ func (ts *TaskRunSpec) ValidateUpdate(ctx context.Context) (errs *apis.FieldErro
         <span class="cov8" title="1">old := oldObj.Spec.DeepCopy()
         old.Status = ts.Status
         old.StatusMessage = ts.StatusMessage
+        old.ManagedBy = ts.ManagedBy // Already tested before
         if !equality.Semantic.DeepEqual(old, ts) </span><span class="cov8" title="1">{
                 errs = errs.Also(apis.ErrInvalidValue("Once the TaskRun has started, only status and statusMessage updates are allowed", ""))
         }</span>
@@ -35244,6 +35290,18 @@ const (
         TracerProviderName = "pipelinerun-reconciler"
 )
 
+var pipelineRunFilterManagedBy = func(obj interface{}) bool <span class="cov8" title="1">{
+        pr, ok := obj.(*v1.PipelineRun)
+        if !ok </span><span class="cov8" title="1">{
+                return true
+        }</span>
+        // Only promote PipelineRuns that are managed by this controller
+        <span class="cov8" title="1">if pr.Spec.ManagedBy != nil &amp;&amp; *pr.Spec.ManagedBy != pipeline.ManagedBy </span><span class="cov8" title="1">{
+                return false
+        }</span>
+        <span class="cov8" title="1">return true</span>
+}
+
 // NewController instantiates a new controller.Impl from knative.dev/pkg/controller
 func NewController(opts *pipeline.Options, clock clock.PassiveClock) func(context.Context, configmap.Watcher) *controller.Impl <span class="cov8" title="1">{
         return func(ctx context.Context, cmw configmap.Watcher) *controller.Impl </span><span class="cov8" title="1">{
@@ -35282,8 +35340,9 @@ func NewController(opts *pipeline.Options, clock clock.PassiveClock) func(contex
                 }
                 impl := pipelinerunreconciler.NewImpl(ctx, c, func(impl *controller.Impl) controller.Options </span><span class="cov8" title="1">{
                         return controller.Options{
-                                AgentName:   pipeline.PipelineRunControllerName,
-                                ConfigStore: configStore,
+                                AgentName:         pipeline.PipelineRunControllerName,
+                                ConfigStore:       configStore,
+                                PromoteFilterFunc: pipelineRunFilterManagedBy,
                         }
                 }</span>)
 
@@ -35291,7 +35350,10 @@ func NewController(opts *pipeline.Options, clock clock.PassiveClock) func(contex
                         logging.FromContext(ctx).Panicf("Couldn't register Secret informer event handler: %w", err)
                 }</span>
 
-                <span class="cov8" title="1">if _, err := pipelineRunInformer.Informer().AddEventHandler(controller.HandleAll(impl.Enqueue)); err != nil </span><span class="cov0" title="0">{
+                <span class="cov8" title="1">if _, err := pipelineRunInformer.Informer().AddEventHandler(cache.FilteringResourceEventHandler{
+                        FilterFunc: pipelineRunFilterManagedBy,
+                        Handler:    controller.HandleAll(impl.Enqueue),
+                }); err != nil </span><span class="cov0" title="0">{
                         logging.FromContext(ctx).Panicf("Couldn't register PipelineRun informer event handler: %w", err)
                 }</span>
 
@@ -39912,7 +39974,7 @@ func removeDup(refs ResolvedResultRefs) ResolvedResultRefs <span class="cov8" ti
                 order = append(order, key)
         }</span>
         <span class="cov8" title="1">sort.Slice(order, func(i, j int) bool </span><span class="cov8" title="1">{
-                if order[i].PipelineTask &gt; order[j].PipelineTask </span><span class="cov8" title="1">{
+                if order[i].PipelineTask &gt; order[j].PipelineTask </span><span class="cov0" title="0">{
                         return false
                 }</span>
                 <span class="cov8" title="1">if order[i].Result &gt; order[j].Result </span><span class="cov0" title="0">{
@@ -40874,6 +40936,18 @@ const (
         TracerProviderName = "taskrun-reconciler"
 )
 
+var taskRunFilterManagedBy = func(obj interface{}) bool <span class="cov8" title="1">{
+        tr, ok := obj.(*v1.TaskRun)
+        if !ok </span><span class="cov8" title="1">{
+                return true
+        }</span>
+        // The taskrun-controller should not reconcile TaskRuns managed by other controllers.
+        <span class="cov8" title="1">if tr.Spec.ManagedBy != nil &amp;&amp; *tr.Spec.ManagedBy != pipeline.ManagedBy </span><span class="cov8" title="1">{
+                return false
+        }</span>
+        <span class="cov8" title="1">return true</span>
+}
+
 // NewController instantiates a new controller.Impl from knative.dev/pkg/controller
 func NewController(opts *pipeline.Options, clock clock.PassiveClock) func(context.Context, configmap.Watcher) *controller.Impl <span class="cov8" title="1">{
         return func(ctx context.Context, cmw configmap.Watcher) *controller.Impl </span><span class="cov8" title="1">{
@@ -40921,8 +40995,9 @@ func NewController(opts *pipeline.Options, clock clock.PassiveClock) func(contex
                 }
                 impl := taskrunreconciler.NewImpl(ctx, c, func(impl *controller.Impl) controller.Options </span><span class="cov8" title="1">{
                         return controller.Options{
-                                AgentName:   pipeline.TaskRunControllerName,
-                                ConfigStore: configStore,
+                                AgentName:         pipeline.TaskRunControllerName,
+                                ConfigStore:       configStore,
+                                PromoteFilterFunc: taskRunFilterManagedBy,
                         }
                 }</span>)
 
@@ -40930,7 +41005,10 @@ func NewController(opts *pipeline.Options, clock clock.PassiveClock) func(contex
                         logging.FromContext(ctx).Panicf("Couldn't register Secret informer event handler: %w", err)
                 }</span>
 
-                <span class="cov8" title="1">if _, err := taskRunInformer.Informer().AddEventHandler(controller.HandleAll(impl.Enqueue)); err != nil </span><span class="cov0" title="0">{
+                <span class="cov8" title="1">if _, err := taskRunInformer.Informer().AddEventHandler(cache.FilteringResourceEventHandler{
+                        FilterFunc: taskRunFilterManagedBy,
+                        Handler:    controller.HandleAll(impl.Enqueue),
+                }); err != nil </span><span class="cov0" title="0">{
                         logging.FromContext(ctx).Panicf("Couldn't register TaskRun informer event handler: %w", err)
                 }</span>
 
