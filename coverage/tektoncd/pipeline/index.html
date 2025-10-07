@@ -357,7 +357,7 @@
 				
 				<option value="file150">github.com/tektoncd/pipeline/pkg/internal/computeresources/compare/compare.go (0.0%)</option>
 				
-				<option value="file151">github.com/tektoncd/pipeline/pkg/internal/computeresources/limitrange/limitrange.go (94.6%)</option>
+				<option value="file151">github.com/tektoncd/pipeline/pkg/internal/computeresources/limitrange/limitrange.go (97.3%)</option>
 				
 				<option value="file152">github.com/tektoncd/pipeline/pkg/internal/computeresources/tasklevel/tasklevel.go (95.0%)</option>
 				
@@ -445,7 +445,7 @@
 				
 				<option value="file194">github.com/tektoncd/pipeline/pkg/reconciler/pipelinerun/resources/pipelinerunstate.go (98.2%)</option>
 				
-				<option value="file195">github.com/tektoncd/pipeline/pkg/reconciler/pipelinerun/resources/resultrefresolution.go (99.2%)</option>
+				<option value="file195">github.com/tektoncd/pipeline/pkg/reconciler/pipelinerun/resources/resultrefresolution.go (98.4%)</option>
 				
 				<option value="file196">github.com/tektoncd/pipeline/pkg/reconciler/pipelinerun/resources/validate_dependencies.go (100.0%)</option>
 				
@@ -28548,7 +28548,7 @@ func minOfBetween(a, b, min, max resource.Quantity) resource.Quantity <span clas
         if compare.IsZero(a) || (&amp;a).Cmp(b) &gt; 0 </span><span class="cov8" title="1">{
                 return b
         }</span>
-        <span class="cov0" title="0">return a</span>
+        <span class="cov8" title="1">return a</span>
 }
 </pre>
 		
@@ -39974,7 +39974,7 @@ func removeDup(refs ResolvedResultRefs) ResolvedResultRefs <span class="cov8" ti
                 order = append(order, key)
         }</span>
         <span class="cov8" title="1">sort.Slice(order, func(i, j int) bool </span><span class="cov8" title="1">{
-                if order[i].PipelineTask &gt; order[j].PipelineTask </span><span class="cov8" title="1">{
+                if order[i].PipelineTask &gt; order[j].PipelineTask </span><span class="cov0" title="0">{
                         return false
                 }</span>
                 <span class="cov8" title="1">if order[i].Result &gt; order[j].Result </span><span class="cov0" title="0">{
