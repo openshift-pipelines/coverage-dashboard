@@ -163,7 +163,7 @@
 				
 				<option value="file53">github.com/openshift-pipelines/pipelines-as-code/pkg/kubeinteraction/secrets.go (56.0%)</option>
 				
-				<option value="file54">github.com/openshift-pipelines/pipelines-as-code/pkg/kubeinteraction/status/task_status.go (77.4%)</option>
+				<option value="file54">github.com/openshift-pipelines/pipelines-as-code/pkg/kubeinteraction/status/task_status.go (76.3%)</option>
 				
 				<option value="file55">github.com/openshift-pipelines/pipelines-as-code/pkg/kubeinteraction/wait.go (75.0%)</option>
 				
@@ -303,7 +303,7 @@
 				
 				<option value="file123">github.com/openshift-pipelines/pipelines-as-code/pkg/reconciler/reconciler.go (45.6%)</option>
 				
-				<option value="file124">github.com/openshift-pipelines/pipelines-as-code/pkg/reconciler/status.go (83.1%)</option>
+				<option value="file124">github.com/openshift-pipelines/pipelines-as-code/pkg/reconciler/status.go (82.4%)</option>
 				
 				<option value="file125">github.com/openshift-pipelines/pipelines-as-code/pkg/resolve/remote.go (88.3%)</option>
 				
@@ -5088,6 +5088,7 @@ import (
         "fmt"
         "regexp"
         "strings"
+        "unicode/utf8"
 
         pacv1alpha1 "github.com/openshift-pipelines/pipelines-as-code/pkg/apis/pipelinesascode/v1alpha1"
         "github.com/openshift-pipelines/pipelines-as-code/pkg/kubeinteraction"
@@ -5099,6 +5100,8 @@ import (
 )
 
 var reasonMessageReplacementRegexp = regexp.MustCompile(`\(image: .*`)
+
+const maxErrorSnippetCharacterLimit = 65535 // This is the maximum size allowed by Github check run logs and may apply to all other providers
 
 // GetTaskRunStatusForPipelineTask takes a minimal embedded status child reference and returns the actual TaskRunStatus
 // for the PipelineTask. It returns an error if the child reference's kind isn't TaskRun.
@@ -5196,8 +5199,18 @@ func CollectFailedTasksLogSnippet(ctx context.Context, cs *params.Run, kinteract
                                         if strings.HasSuffix(trimmed, " Skipping step because a previous step failed") </span><span class="cov0" title="0">{
                                                 continue</span>
                                         }
-                                        // see if a pattern match from errRe
-                                        <span class="cov8" title="1">ti.LogSnippet = strings.TrimSpace(trimmed)</span>
+                                        // GitHub's character limit is actually in bytes, not unicode characters
+                                        // Truncate to maxErrorSnippetCharacterLimit bytes, then trim to last valid UTF-8 boundary
+                                        <span class="cov8" title="1">if len(trimmed) &gt; maxErrorSnippetCharacterLimit </span><span class="cov8" title="1">{
+                                                trimmed = trimmed[:maxErrorSnippetCharacterLimit]
+                                                // Trim further to last valid rune boundary to ensure valid UTF-8
+                                                r, size := utf8.DecodeLastRuneInString(trimmed)
+                                                for r == utf8.RuneError &amp;&amp; size &gt; 0 </span><span class="cov0" title="0">{
+                                                        trimmed = trimmed[:len(trimmed)-size]
+                                                        r, size = utf8.DecodeLastRuneInString(trimmed)
+                                                }</span>
+                                        }
+                                        <span class="cov8" title="1">ti.LogSnippet = trimmed</span>
                                 }
                         }
                 }
@@ -7758,10 +7771,11 @@ type Settings struct {
         SecretGHAppRepoScoped            bool   `default:"true"                             json:"secret-github-app-token-scoped"`
         SecretGhAppTokenScopedExtraRepos string `json:"secret-github-app-scope-extra-repos"`
 
-        ErrorLogSnippet             bool   `default:"true"                                                                          json:"error-log-snippet"`
-        ErrorDetection              bool   `default:"true"                                                                          json:"error-detection-from-container-logs"`
-        ErrorDetectionNumberOfLines int    `default:"50"                                                                            json:"error-detection-max-number-of-lines"`
-        ErrorDetectionSimpleRegexp  string `default:"^(?P&lt;filename&gt;[^:]*):(?P&lt;line&gt;[0-9]+):(?P&lt;column&gt;[0-9]+)?([ ]*)?(?P&lt;error&gt;.*)" json:"error-detection-simple-regexp"`
+        ErrorLogSnippet              bool   `default:"true"                                                                          json:"error-log-snippet"`
+        ErrorLogSnippetNumberOfLines int    `default:"3"                                                                             json:"error-log-snippet-number-of-lines"`
+        ErrorDetection               bool   `default:"true"                                                                          json:"error-detection-from-container-logs"`
+        ErrorDetectionNumberOfLines  int    `default:"50"                                                                            json:"error-detection-max-number-of-lines"`
+        ErrorDetectionSimpleRegexp   string `default:"^(?P&lt;filename&gt;[^:]*):(?P&lt;line&gt;[0-9]+):(?P&lt;column&gt;[0-9]+)?([ ]*)?(?P&lt;error&gt;.*)" json:"error-detection-simple-regexp"`
 
         EnableCancelInProgressOnPullRequests bool `json:"enable-cancel-in-progress-on-pull-requests"`
         EnableCancelInProgressOnPush         bool `json:"enable-cancel-in-progress-on-push"`
@@ -17169,7 +17183,6 @@ import (
 
 const (
         maxPipelineRunStatusRun = 5
-        logSnippetNumLines      = 3
 )
 
 var backoffSchedule = []time.Duration{
@@ -17225,7 +17238,11 @@ func (r *Reconciler) updateRepoRunStatus(ctx context.Context, logger *zap.Sugare
 }
 
 func (r *Reconciler) getFailureSnippet(ctx context.Context, pr *tektonv1.PipelineRun) string <span class="cov8" title="1">{
-        taskinfos := kstatus.CollectFailedTasksLogSnippet(ctx, r.run, r.kinteract, pr, logSnippetNumLines)
+        lines := int64(settings.DefaultSettings().ErrorLogSnippetNumberOfLines)
+        if r.run.Info.Pac != nil </span><span class="cov0" title="0">{
+                lines = int64(r.run.Info.Pac.ErrorLogSnippetNumberOfLines)
+        }</span>
+        <span class="cov8" title="1">taskinfos := kstatus.CollectFailedTasksLogSnippet(ctx, r.run, r.kinteract, pr, lines)
         if len(taskinfos) == 0 </span><span class="cov8" title="1">{
                 return ""
         }</span>
