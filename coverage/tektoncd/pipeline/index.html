@@ -165,7 +165,7 @@
 				
 				<option value="file54">github.com/tektoncd/pipeline/pkg/apis/pipeline/v1/types/when_types.go (0.0%)</option>
 				
-				<option value="file55">github.com/tektoncd/pipeline/pkg/apis/pipeline/v1/when_types.go (100.0%)</option>
+				<option value="file55">github.com/tektoncd/pipeline/pkg/apis/pipeline/v1/when_types.go (95.2%)</option>
 				
 				<option value="file56">github.com/tektoncd/pipeline/pkg/apis/pipeline/v1/when_validation.go (100.0%)</option>
 				
@@ -11740,6 +11740,7 @@ limitations under the License.
 package v1
 
 import (
+        "encoding/json"
         "fmt"
 
         "github.com/tektoncd/pipeline/pkg/substitution"
@@ -11785,7 +11786,7 @@ func (we *WhenExpression) isTrue() bool <span class="cov8" title="1">{
 }
 
 func (we *WhenExpression) applyReplacements(replacements map[string]string, arrayReplacements map[string][]string) WhenExpression <span class="cov8" title="1">{
-        replacedInput := substitution.ApplyReplacements(we.Input, replacements)
+        replacedInput := applyReplacementsAsString(we.Input, replacements, arrayReplacements)
         replacedCEL := substitution.ApplyReplacements(we.CEL, replacements)
 
         var replacedValues []string
@@ -11804,6 +11805,26 @@ func (we *WhenExpression) applyReplacements(replacements map[string]string, arra
         }
 
         <span class="cov8" title="1">return WhenExpression{Input: replacedInput, Operator: we.Operator, Values: replacedValues, CEL: replacedCEL}</span>
+}
+
+func applyReplacementsAsString(s string, replacements map[string]string, arrayReplacements map[string][]string) string <span class="cov8" title="1">{
+        if _, ok := arrayReplacements[fmt.Sprintf("%s.%s", ParamsPrefix, ArrayReference(s))]; ok </span><span class="cov8" title="1">{
+                b, err := json.Marshal(substitution.ApplyArrayReplacements(s, replacements, arrayReplacements))
+                if err != nil </span><span class="cov0" title="0">{
+                        return s
+                }</span>
+                <span class="cov8" title="1">return string(b)</span>
+        }
+
+        <span class="cov8" title="1">if _, ok := arrayReplacements[ResultsArrayReference(s)]; ok </span><span class="cov8" title="1">{
+                b, err := json.Marshal(substitution.ApplyArrayReplacements(s, replacements, arrayReplacements))
+                if err != nil </span><span class="cov0" title="0">{
+                        return s
+                }</span>
+                <span class="cov8" title="1">return string(b)</span>
+        }
+
+        <span class="cov8" title="1">return substitution.ApplyReplacements(s, replacements)</span>
 }
 
 // GetVarSubstitutionExpressions extracts all the values between "$(" and ")" in a When Expression
