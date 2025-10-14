@@ -7528,7 +7528,7 @@ func (k *KubeOpts) AddFlags(cmd *cobra.Command) <span class="cov8" title="1">{
                 fmt.Sprintf("Path to the kubeconfig file to use for CLI requests (default: %s)", envkconfig))
 
         cmd.PersistentFlags().StringVarP(
-                &amp;k.ConfigPath,
+                &amp;k.Namespace,
                 "namespace", "n", "",
                 "If present, the namespace scope for this CLI request")</span>
 }
