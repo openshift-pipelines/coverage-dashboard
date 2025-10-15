@@ -333,7 +333,7 @@
 				
 				<option value="file138">github.com/openshift-pipelines/pipelines-as-code/pkg/sync/semaphore.go (91.4%)</option>
 				
-				<option value="file139">github.com/openshift-pipelines/pipelines-as-code/pkg/templates/templating.go (49.0%)</option>
+				<option value="file139">github.com/openshift-pipelines/pipelines-as-code/pkg/templates/templating.go (88.9%)</option>
 				
 				<option value="file140">github.com/openshift-pipelines/pipelines-as-code/pkg/webhook/controller.go (0.0%)</option>
 				
@@ -19146,14 +19146,25 @@ func ReplacePlaceHoldersVariables(template string, dico map[string]string, rawEv
                 parts := keys.ParamsRe.FindStringSubmatch(s)
                 key := strings.TrimSpace(parts[1])
                 if strings.HasPrefix(key, "body") || strings.HasPrefix(key, "headers") || strings.HasPrefix(key, "files") </span><span class="cov8" title="1">{
-                        if rawEvent != nil &amp;&amp; headers != nil </span><span class="cov8" title="1">{
+                        // Check specific requirements for each prefix
+                        canEvaluate := false
+                        switch </span>{
+                        case strings.HasPrefix(key, "body") &amp;&amp; rawEvent != nil:<span class="cov8" title="1">
+                                canEvaluate = true</span>
+                        case strings.HasPrefix(key, "headers") &amp;&amp; headers != nil:<span class="cov8" title="1">
+                                canEvaluate = true</span>
+                        case strings.HasPrefix(key, "files"):<span class="cov8" title="1">
+                                canEvaluate = true</span> // files evaluation doesn't depend on rawEvent or headers
+                        }
+
+                        <span class="cov8" title="1">if canEvaluate </span><span class="cov8" title="1">{
                                 // convert headers to map[string]string
                                 headerMap := make(map[string]string)
                                 for k, v := range headers </span><span class="cov8" title="1">{
                                         headerMap[k] = v[0]
                                 }</span>
                                 <span class="cov8" title="1">val, err := cel.Value(key, rawEvent, headerMap, map[string]string{}, changedFiles)
-                                if err != nil </span><span class="cov0" title="0">{
+                                if err != nil </span><span class="cov8" title="1">{
                                         return s
                                 }</span>
                                 <span class="cov8" title="1">var raw any
@@ -19165,10 +19176,10 @@ func ReplacePlaceHoldersVariables(template string, dico map[string]string, rawEv
                                                 b = []byte(v)
                                         }</span>
 
-                                case types.Bytes, types.Double, types.Int:<span class="cov0" title="0">
+                                case types.Bytes, types.Double, types.Int:<span class="cov8" title="1">
                                         raw, err = val.ConvertToNative(structType)
-                                        if err == nil </span><span class="cov0" title="0">{
-                                                if structVal, ok := raw.(*structpb.Value); ok </span><span class="cov0" title="0">{
+                                        if err == nil </span><span class="cov8" title="1">{
+                                                if structVal, ok := raw.(*structpb.Value); ok </span><span class="cov8" title="1">{
                                                         b, err = structVal.MarshalJSON()
                                                         if err != nil </span><span class="cov0" title="0">{
                                                                 b = []byte{}
@@ -19176,10 +19187,10 @@ func ReplacePlaceHoldersVariables(template string, dico map[string]string, rawEv
                                                 }
                                         }
 
-                                case traits.Lister:<span class="cov0" title="0">
+                                case traits.Lister:<span class="cov8" title="1">
                                         raw, err = val.ConvertToNative(listType)
-                                        if err == nil </span><span class="cov0" title="0">{
-                                                if msg, ok := raw.(proto.Message); ok </span><span class="cov0" title="0">{
+                                        if err == nil </span><span class="cov8" title="1">{
+                                                if msg, ok := raw.(proto.Message); ok </span><span class="cov8" title="1">{
                                                         b, err = protojson.Marshal(msg)
                                                         if err != nil </span><span class="cov0" title="0">{
                                                                 b = []byte{}
@@ -19187,10 +19198,10 @@ func ReplacePlaceHoldersVariables(template string, dico map[string]string, rawEv
                                                 }
                                         }
 
-                                case traits.Mapper:<span class="cov0" title="0">
+                                case traits.Mapper:<span class="cov8" title="1">
                                         raw, err = val.ConvertToNative(mapType)
-                                        if err == nil </span><span class="cov0" title="0">{
-                                                if msg, ok := raw.(proto.Message); ok </span><span class="cov0" title="0">{
+                                        if err == nil </span><span class="cov8" title="1">{
+                                                if msg, ok := raw.(proto.Message); ok </span><span class="cov8" title="1">{
                                                         b, err = protojson.Marshal(msg)
                                                         if err != nil </span><span class="cov0" title="0">{
                                                                 b = []byte{}
@@ -19209,7 +19220,7 @@ func ReplacePlaceHoldersVariables(template string, dico map[string]string, rawEv
                                                 }
                                         }
 
-                                default:<span class="cov0" title="0">
+                                default:<span class="cov8" title="1">
                                         raw, err = val.ConvertToNative(reflect.TypeOf([]byte{}))
                                         if err == nil </span><span class="cov0" title="0">{
                                                 if v, ok := raw.([]byte); ok </span><span class="cov0" title="0">{
@@ -19219,7 +19230,7 @@ func ReplacePlaceHoldersVariables(template string, dico map[string]string, rawEv
                                 }
                                 <span class="cov8" title="1">return string(b)</span>
                         }
-                        <span class="cov0" title="0">return s</span>
+                        <span class="cov8" title="1">return s</span>
                 }
                 <span class="cov8" title="1">if _, ok := dico[key]; !ok </span><span class="cov8" title="1">{
                         return s
