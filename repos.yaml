@@ -81,3 +81,31 @@ repositories:
     exclude_files:
       - zz_generated.deepcopy.go
       - openapi_generated.go
+
+  - name: tektoncd/cli
+    exclude_dirs:
+      - cmd/
+      - vendor/
+      - hack/
+      - proto/
+      - test/
+      - pkg/test
+      - tools/
+      - /fake(/|$)
+    exclude_files:
+      - zz_generated.deepcopy.go
+      - openapi_generated.go
+
+  - name: openshift-pipelines/manual-approval-gate
+    exclude_dirs:
+      - cmd/
+      - vendor/
+      - hack/
+      - proto/
+      - test/
+      - pkg/test
+      - tools/
+      - /fake(/|$)
+    exclude_files:
+      - zz_generated.deepcopy.go
+      - openapi_generated.go
