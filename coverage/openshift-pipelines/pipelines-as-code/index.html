@@ -14865,20 +14865,23 @@ func (v *Provider) checkOkToTestCommentFromApprovedMember(ctx context.Context, e
                 nextPage = resp.NextPage
         }</span>
 
-        <span class="cov8" title="1">for _, comment := range discussions </span><span class="cov8" title="1">{
-                // TODO: maybe we do threads in the future but for now we just check the top thread for ops related comments
-                topthread := comment.Notes[0]
-                if acl.MatchRegexp(acl.OKToTestCommentRegexp, topthread.Body) </span><span class="cov8" title="1">{
-                        commenterEvent := info.NewEvent()
-                        commenterEvent.Event = event.Event
-                        commenterEvent.Sender = topthread.Author.Username
-                        commenterEvent.BaseBranch = event.BaseBranch
-                        commenterEvent.HeadBranch = event.HeadBranch
-                        commenterEvent.DefaultBranch = event.DefaultBranch
-                        // TODO: we could probably do with caching when checking all issues?
-                        if v.checkMembership(ctx, commenterEvent, topthread.Author.ID) </span><span class="cov8" title="1">{
-                                return true, nil
-                        }</span>
+        <span class="cov8" title="1">for _, discussion := range discussions </span><span class="cov8" title="1">{
+                // Iterate through every note in the discussion thread and evaluate them.
+                // If a note contains an OK-to-test command, verify the commenter's permission
+                // (either project membership or presence in OWNERS/OWNERS_ALIASES).
+                for _, note := range discussion.Notes </span><span class="cov8" title="1">{
+                        if acl.MatchRegexp(acl.OKToTestCommentRegexp, note.Body) </span><span class="cov8" title="1">{
+                                commenterEvent := info.NewEvent()
+                                commenterEvent.Event = event.Event
+                                commenterEvent.Sender = note.Author.Username
+                                commenterEvent.BaseBranch = event.BaseBranch
+                                commenterEvent.HeadBranch = event.HeadBranch
+                                commenterEvent.DefaultBranch = event.DefaultBranch
+                                // We could add caching for membership checks in the future.
+                                if v.checkMembership(ctx, commenterEvent, note.Author.ID) </span><span class="cov8" title="1">{
+                                        return true, nil
+                                }</span>
+                        }
                 }
         }
 

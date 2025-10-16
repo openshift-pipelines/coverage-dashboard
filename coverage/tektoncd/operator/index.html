@@ -65,7 +65,7 @@
 				
 				<option value="file4">github.com/tektoncd/operator/pkg/apis/operator/v1alpha1/manualapprovalgate_types.go (0.0%)</option>
 				
-				<option value="file5">github.com/tektoncd/operator/pkg/apis/operator/v1alpha1/openshiftpipelinesascode_defaults.go (81.7%)</option>
+				<option value="file5">github.com/tektoncd/operator/pkg/apis/operator/v1alpha1/openshiftpipelinesascode_defaults.go (80.6%)</option>
 				
 				<option value="file6">github.com/tektoncd/operator/pkg/apis/operator/v1alpha1/openshiftpipelinesascode_lifecycle.go (50.0%)</option>
 				
@@ -1033,8 +1033,11 @@ func ConvertPacStructToConfigMap(settings *pacSettings.Settings) map[string]stri
                                         if key == "default" </span><span class="cov8" title="1">{
                                                 config[pacSettings.HubURLKey] = catalogData.URL
                                                 config[pacSettings.HubCatalogTypeKey] = catalogData.Type
-                                                return true
-                                        }</span>
+                                                if catalogData.Name != "" </span><span class="cov0" title="0">{
+                                                        config[pacSettings.HubCatalogNameKey] = catalogData.Name
+                                                }</span>
+                                                <span class="cov8" title="1">return true</span>
+                                        }
                                         <span class="cov8" title="1">config[fmt.Sprintf("%s-%s-%s", "catalog", catalogData.Index, "id")] = key.(string)
                                         config[fmt.Sprintf("%s-%s-%s", "catalog", catalogData.Index, "name")] = catalogData.Name
                                         config[fmt.Sprintf("%s-%s-%s", "catalog", catalogData.Index, "url")] = catalogData.URL
