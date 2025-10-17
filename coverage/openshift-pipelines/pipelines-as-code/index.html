@@ -279,7 +279,7 @@
 				
 				<option value="file111">github.com/openshift-pipelines/pipelines-as-code/pkg/provider/gitlab/gitlab.go (83.5%)</option>
 				
-				<option value="file112">github.com/openshift-pipelines/pipelines-as-code/pkg/provider/gitlab/parse_payload.go (82.5%)</option>
+				<option value="file112">github.com/openshift-pipelines/pipelines-as-code/pkg/provider/gitlab/parse_payload.go (83.4%)</option>
 				
 				<option value="file113">github.com/openshift-pipelines/pipelines-as-code/pkg/provider/gitlab/task.go (59.5%)</option>
 				
@@ -303,7 +303,7 @@
 				
 				<option value="file123">github.com/openshift-pipelines/pipelines-as-code/pkg/reconciler/reconciler.go (45.6%)</option>
 				
-				<option value="file124">github.com/openshift-pipelines/pipelines-as-code/pkg/reconciler/status.go (82.4%)</option>
+				<option value="file124">github.com/openshift-pipelines/pipelines-as-code/pkg/reconciler/status.go (82.6%)</option>
 				
 				<option value="file125">github.com/openshift-pipelines/pipelines-as-code/pkg/resolve/remote.go (88.3%)</option>
 				
@@ -15857,12 +15857,20 @@ func (v *Provider) handleCommitCommentEvent(ctx context.Context, event *gitlab.C
         var (
                 branchName string
                 prName     string
+                tagName    string
                 err        error
         )
 
+        // since we're going to make an API call to ensure that the commit is HEAD of the branch
+        // therefore we need to initialize GitLab client here
+        processedEvent, err = v.initGitLabClient(ctx, processedEvent)
+        if err != nil </span><span class="cov0" title="0">{
+                return processedEvent, err
+        }</span>
+
         // get PipelineRun name from comment if it does contain e.g. `/test pr7`
-        if provider.IsTestRetestComment(event.ObjectAttributes.Note) </span><span class="cov8" title="1">{
-                prName, branchName, err = opscomments.GetPipelineRunAndBranchNameFromTestComment(event.ObjectAttributes.Note)
+        <span class="cov8" title="1">if provider.IsTestRetestComment(event.ObjectAttributes.Note) </span><span class="cov8" title="1">{
+                prName, branchName, tagName, err = provider.GetPipelineRunAndBranchOrTagNameFromTestComment(event.ObjectAttributes.Note)
                 if err != nil </span><span class="cov8" title="1">{
                         return processedEvent, err
                 }</span>
@@ -15871,7 +15879,7 @@ func (v *Provider) handleCommitCommentEvent(ctx context.Context, event *gitlab.C
 
         <span class="cov8" title="1">if provider.IsCancelComment(event.ObjectAttributes.Note) </span><span class="cov8" title="1">{
                 action = "cancellation"
-                prName, branchName, err = opscomments.GetPipelineRunAndBranchNameFromCancelComment(event.ObjectAttributes.Note)
+                prName, branchName, tagName, err = provider.GetPipelineRunAndBranchOrTagNameFromCancelComment(event.ObjectAttributes.Note)
                 if err != nil </span><span class="cov0" title="0">{
                         return processedEvent, err
                 }</span>
@@ -15879,15 +15887,24 @@ func (v *Provider) handleCommitCommentEvent(ctx context.Context, event *gitlab.C
                 processedEvent.TargetCancelPipelineRun = prName</span>
         }
 
+        <span class="cov8" title="1">if tagName != "" </span><span class="cov8" title="1">{
+                tagPath := fmt.Sprintf("refs/tags/%s", tagName)
+                tag, _, err := v.gitlabClient.Tags.GetTag(v.sourceProjectID, tagName)
+                if err != nil </span><span class="cov8" title="1">{
+                        return processedEvent, fmt.Errorf("error getting tag %s: %w", tagName, err)
+                }</span>
+
+                <span class="cov8" title="1">if tag.Commit.ID != processedEvent.SHA </span><span class="cov8" title="1">{
+                        return processedEvent, fmt.Errorf("provided SHA %s is not the tagged commit for the tag %s", processedEvent.SHA, tagName)
+                }</span>
+
+                <span class="cov8" title="1">processedEvent.HeadBranch = tagPath
+                processedEvent.BaseBranch = tagPath
+                return processedEvent, nil</span>
+        }
+
         <span class="cov8" title="1">if branchName == "" </span><span class="cov8" title="1">{
                 branchName = processedEvent.HeadBranch
-        }</span>
-
-        // since we're going to make an API call to ensure that the commit is HEAD of the branch
-        // therefore we need to initialize GitLab client here
-        <span class="cov8" title="1">processedEvent, err = v.initGitLabClient(ctx, processedEvent)
-        if err != nil </span><span class="cov0" title="0">{
-                return processedEvent, err
         }</span>
 
         // check if the commit on which comment is made, is HEAD commit of the branch
@@ -17234,6 +17251,7 @@ func (r *Reconciler) updateRepoRunStatus(ctx context.Context, logger *zap.Sugare
                         continue</span>
                 }
                 <span class="cov8" title="1">logger.Infof("Repository status of %s has been updated", nrepo.Name)
+                logger.Warn("The `pipelinerun_status` field in the Repository CR is scheduled for deprecation and will be removed in a future release. Please avoid relying on it.")
                 return nil</span>
         }
 
