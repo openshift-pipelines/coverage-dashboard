@@ -159,7 +159,7 @@
 				
 				<option value="file51">github.com/tektoncd/triggers/pkg/interceptors/cel/triggers.go (88.2%)</option>
 				
-				<option value="file52">github.com/tektoncd/triggers/pkg/interceptors/github/github.go (92.7%)</option>
+				<option value="file52">github.com/tektoncd/triggers/pkg/interceptors/github/github.go (92.0%)</option>
 				
 				<option value="file53">github.com/tektoncd/triggers/pkg/interceptors/gitlab/gitlab.go (89.7%)</option>
 				
@@ -167,7 +167,7 @@
 				
 				<option value="file55">github.com/tektoncd/triggers/pkg/interceptors/secret_getter.go (84.6%)</option>
 				
-				<option value="file56">github.com/tektoncd/triggers/pkg/interceptors/server/server.go (80.9%)</option>
+				<option value="file56">github.com/tektoncd/triggers/pkg/interceptors/server/server.go (82.3%)</option>
 				
 				<option value="file57">github.com/tektoncd/triggers/pkg/interceptors/slack/slack.go (80.0%)</option>
 				
@@ -6382,7 +6382,7 @@ func (w *InterceptorImpl) Process(ctx context.Context, r *triggersv1.Interceptor
                         return interceptors.Failf(codes.FailedPrecondition, "error parsing body: %v", err)
                 }</span>
                 <span class="cov8" title="1">allowed, err := checkOwnershipAndMembership(ctx, payload, p, client)
-                if err != nil </span><span class="cov8" title="1">{
+                if err != nil </span><span class="cov0" title="0">{
                         return interceptors.Failf(codes.FailedPrecondition, "error checking owner verification: %v", err)
                 }</span>
 
@@ -6615,7 +6615,7 @@ func checkOwnershipAndMembership(ctx context.Context, payload OwnersPayloadDetai
                         // no owner file, skipping
                         return false, nil
                 }</span>
-                <span class="cov8" title="1">return false, err</span>
+                <span class="cov0" title="0">return false, err</span>
         }
 
         <span class="cov8" title="1">return userInOwnerFile(ownerContent, payload.Sender)</span>
@@ -7448,7 +7448,7 @@ func UpdateCACertToClusterInterceptorCRD(ctx context.Context, service *Server, t
                 for </span><span class="cov8" title="1">{
                         &lt;-ticker.C
                         secret, err := secretInformer.Get(ctx).Lister().Secrets(system.Namespace()).Get(interceptorSecretName)
-                        if err != nil </span><span class="cov0" title="0">{
+                        if err != nil </span><span class="cov8" title="1">{
                                 logger.Errorf("failed to fetch secret %v", err)
                                 return
                         }</span>
