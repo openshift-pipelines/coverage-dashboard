@@ -379,7 +379,7 @@
 				
 				<option value="file161">github.com/tektoncd/pipeline/pkg/pipelinerunmetrics/metrics.go (86.7%)</option>
 				
-				<option value="file162">github.com/tektoncd/pipeline/pkg/platforms/platforms.go (50.0%)</option>
+				<option value="file162">github.com/tektoncd/pipeline/pkg/platforms/platforms.go (57.7%)</option>
 				
 				<option value="file163">github.com/tektoncd/pipeline/pkg/pod/creds_init.go (94.9%)</option>
 				
@@ -29934,6 +29934,7 @@ const (
         Windows = "windows"
         Darwin  = "darwin"
         FreeBSD = "freebsd"
+        Linux   = "linux"
 )
 
 // Platform describes the platform which the image in the manifest runs on.
@@ -30019,20 +30020,20 @@ func getCPUVariant() (string, error) <span class="cov8" title="1">{
                 default:<span class="cov0" title="0">
                         variant = Unknown</span>
                 }
-        case FreeBSD:<span class="cov0" title="0">
+        case Linux, FreeBSD:<span class="cov8" title="1">
                 // FreeBSD supports ARMv6 and ARMv7 as well as ARMv4 and ARMv5 (though deprecated)
                 // detecting those variants is currently unimplemented
                 switch runtime.GOARCH </span>{
                 case Arm64:<span class="cov0" title="0">
                         variant = "v8"</span>
-                default:<span class="cov0" title="0">
+                default:<span class="cov8" title="1">
                         variant = Unknown</span>
                 }
-        default:<span class="cov8" title="1">
+        default:<span class="cov0" title="0">
                 return "", fmt.Errorf("getCPUVariant for OS %s: %w", runtime.GOOS, errNotImplemented)</span>
         }
 
-        <span class="cov0" title="0">return variant, nil</span>
+        <span class="cov8" title="1">return variant, nil</span>
 }
 </pre>
 		
