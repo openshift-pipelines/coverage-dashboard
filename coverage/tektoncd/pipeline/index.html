@@ -471,7 +471,7 @@
 				
 				<option value="file207">github.com/tektoncd/pipeline/pkg/reconciler/taskrun/resources/validate_params.go (97.2%)</option>
 				
-				<option value="file208">github.com/tektoncd/pipeline/pkg/reconciler/taskrun/taskrun.go (86.5%)</option>
+				<option value="file208">github.com/tektoncd/pipeline/pkg/reconciler/taskrun/taskrun.go (86.9%)</option>
 				
 				<option value="file209">github.com/tektoncd/pipeline/pkg/reconciler/taskrun/tracing.go (90.9%)</option>
 				
@@ -43824,8 +43824,8 @@ func (c *Reconciler) failTaskRun(ctx context.Context, tr *v1.TaskRun, reason v1.
         <span class="cov8" title="1">terminateStepsInPod(tr, reason)
 
         var err error
-        if reason == v1.TaskRunReasonCancelled &amp;&amp; (config.FromContextOrDefaults(ctx).FeatureFlags.EnableKeepPodOnCancel) </span><span class="cov0" title="0">{
-                logger.Infof("Canceling task run %q by entrypoint", tr.Name)
+        if (reason == v1.TaskRunReasonCancelled || reason == v1.TaskRunReasonTimedOut) &amp;&amp; (config.FromContextOrDefaults(ctx).FeatureFlags.EnableKeepPodOnCancel) </span><span class="cov8" title="1">{
+                logger.Infof("Canceling task run %q by entrypoint, Reason: %s", tr.Name, reason)
                 err = podconvert.CancelPod(ctx, c.KubeClientSet, tr.Namespace, tr.Status.PodName)
         }</span> else<span class="cov8" title="1"> {
                 err = c.KubeClientSet.CoreV1().Pods(tr.Namespace).Delete(ctx, tr.Status.PodName, metav1.DeleteOptions{})
