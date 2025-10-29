@@ -63,7 +63,7 @@
 				
 				<option value="file3">github.com/openshift-pipelines/pipelines-as-code/pkg/adapter/adapter.go (62.6%)</option>
 				
-				<option value="file4">github.com/openshift-pipelines/pipelines-as-code/pkg/adapter/incoming.go (91.0%)</option>
+				<option value="file4">github.com/openshift-pipelines/pipelines-as-code/pkg/adapter/incoming.go (91.2%)</option>
 				
 				<option value="file5">github.com/openshift-pipelines/pipelines-as-code/pkg/adapter/sinker.go (36.4%)</option>
 				
@@ -113,7 +113,7 @@
 				
 				<option value="file28">github.com/openshift-pipelines/pipelines-as-code/pkg/consoleui/openshift.go (100.0%)</option>
 				
-				<option value="file29">github.com/openshift-pipelines/pipelines-as-code/pkg/consoleui/tektondashboard.go (100.0%)</option>
+				<option value="file29">github.com/openshift-pipelines/pipelines-as-code/pkg/consoleui/tektondashboard.go (87.5%)</option>
 				
 				<option value="file30">github.com/openshift-pipelines/pipelines-as-code/pkg/customparams/customparams.go (100.0%)</option>
 				
@@ -221,7 +221,7 @@
 				
 				<option value="file82">github.com/openshift-pipelines/pipelines-as-code/pkg/pipelineascode/match.go (82.9%)</option>
 				
-				<option value="file83">github.com/openshift-pipelines/pipelines-as-code/pkg/pipelineascode/pipelineascode.go (71.3%)</option>
+				<option value="file83">github.com/openshift-pipelines/pipelines-as-code/pkg/pipelineascode/pipelineascode.go (72.1%)</option>
 				
 				<option value="file84">github.com/openshift-pipelines/pipelines-as-code/pkg/pipelineascode/secret.go (81.8%)</option>
 				
@@ -832,6 +832,10 @@ import (
         "go.uber.org/zap"
 )
 
+const (
+        defaultIncomingWebhookSecretKey = "secret"
+)
+
 func compareSecret(incomingSecret, secretValue string) bool <span class="cov8" title="1">{
         return subtle.ConstantTimeCompare([]byte(incomingSecret), []byte(secretValue)) != 0
 }</span>
@@ -931,7 +935,12 @@ func (l *listener) detectIncoming(ctx context.Context, req *http.Request, payloa
                 Name:      hook.Secret.Name,
                 Key:       hook.Secret.Key,
         }
-        secretValue, err := l.kint.GetSecret(ctx, secretOpts)
+
+        if secretOpts.Key == "" </span><span class="cov8" title="1">{
+                secretOpts.Key = defaultIncomingWebhookSecretKey
+        }</span>
+
+        <span class="cov8" title="1">secretValue, err := l.kint.GetSecret(ctx, secretOpts)
         if err != nil </span><span class="cov8" title="1">{
                 return false, nil, fmt.Errorf("error getting secret referenced in incoming-webhook: %w", err)
         }</span>
@@ -3479,8 +3488,8 @@ import (
 const (
         openShiftConsoleNS                = "openshift-console"
         openShiftConsoleRouteName         = "console"
-        openShiftPipelineNamespaceViewURL = "https://%s/pipelines/ns/%s/pipeline-runs"
-        openShiftPipelineDetailViewURL    = "https://%s/k8s/ns/%s/tekton.dev~v1~PipelineRun/%s"
+        openShiftPipelineNamespaceViewURL = "%s/pipelines/ns/%s/pipeline-runs"
+        openShiftPipelineDetailViewURL    = "%s/k8s/ns/%s/tekton.dev~v1~PipelineRun/%s"
         openShiftPipelineTaskLogURL       = "%s/logs/%s"
         openShiftRouteGroup               = "route.openshift.io"
         openShiftRouteVersion             = "v1"
@@ -3500,11 +3509,14 @@ func (o *OpenshiftConsole) GetName() string <span class="cov8" title="1">{
 }</span>
 
 func (o *OpenshiftConsole) URL() string <span class="cov8" title="1">{
-        return "https://" + o.host
-}</span>
+        if o.host == "" </span><span class="cov8" title="1">{
+                return "https://openshift.url.is.not.configured"
+        }</span>
+        <span class="cov8" title="1">return "https://" + o.host</span>
+}
 
 func (o *OpenshiftConsole) DetailURL(pr *tektonv1.PipelineRun) string <span class="cov8" title="1">{
-        return fmt.Sprintf(openShiftPipelineDetailViewURL, o.host, pr.GetNamespace(), pr.GetName())
+        return fmt.Sprintf(openShiftPipelineDetailViewURL, o.URL(), pr.GetNamespace(), pr.GetName())
 }</span>
 
 func (o *OpenshiftConsole) TaskLogURL(pr *tektonv1.PipelineRun, taskRunStatus *tektonv1.PipelineRunTaskRunStatus) string <span class="cov8" title="1">{
@@ -3512,7 +3524,7 @@ func (o *OpenshiftConsole) TaskLogURL(pr *tektonv1.PipelineRun, taskRunStatus *t
 }</span>
 
 func (o *OpenshiftConsole) NamespaceURL(pr *tektonv1.PipelineRun) string <span class="cov8" title="1">{
-        return fmt.Sprintf(openShiftPipelineNamespaceViewURL, o.host, pr.GetNamespace())
+        return fmt.Sprintf(openShiftPipelineNamespaceViewURL, o.URL(), pr.GetNamespace())
 }</span>
 
 // UI use dynamic client to get the route of the openshift
@@ -3564,7 +3576,7 @@ func (t *TektonDashboard) GetName() string <span class="cov8" title="1">{
 }</span>
 
 func (t *TektonDashboard) DetailURL(pr *tektonv1.PipelineRun) string <span class="cov8" title="1">{
-        return fmt.Sprintf("%s/#/namespaces/%s/pipelineruns/%s", t.BaseURL, pr.GetNamespace(), pr.GetName())
+        return fmt.Sprintf("%s/#/namespaces/%s/pipelineruns/%s", t.URL(), pr.GetNamespace(), pr.GetName())
 }</span>
 
 func (t *TektonDashboard) NamespaceURL(pr *tektonv1.PipelineRun) string <span class="cov8" title="1">{
@@ -3576,8 +3588,12 @@ func (t *TektonDashboard) TaskLogURL(pr *tektonv1.PipelineRun, taskRunStatus *te
 }</span>
 
 func (t *TektonDashboard) URL() string <span class="cov8" title="1">{
-        return t.BaseURL
-}</span>
+        // if BaseURL is not provided, return fake URL
+        if t.BaseURL == "" || t.BaseURL == "http://" || t.BaseURL == "https://" </span><span class="cov0" title="0">{
+                return "https://dashboard.url.is.not.configured"
+        }</span>
+        <span class="cov8" title="1">return t.BaseURL</span>
+}
 
 func (t *TektonDashboard) UI(_ context.Context, _ dynamic.Interface) error <span class="cov8" title="1">{
         return nil
@@ -9047,13 +9063,16 @@ func (p *PacRun) Run(ctx context.Context) error <span class="cov8" title="1">{
                                 errMsgM := fmt.Sprintf("There was an error creating the PipelineRun: &lt;b&gt;%s&lt;/b&gt;\n\n%s", match.PipelineRun.GetGenerateName(), err.Error())
                                 p.eventEmitter.EmitMessage(repo, zap.ErrorLevel, "RepositoryPipelineRun", errMsg)
                                 createStatusErr := p.vcx.CreateStatus(ctx, p.event, provider.StatusOpts{
+                                        PipelineRunName:          match.PipelineRun.GetName(),
+                                        PipelineRun:              match.PipelineRun,
+                                        OriginalPipelineRunName:  match.PipelineRun.GetAnnotations()[keys.OriginalPRName],
                                         Status:                   CompletedStatus,
                                         Conclusion:               failureConclusion,
                                         Text:                     errMsgM,
                                         DetailsURL:               p.run.Clients.ConsoleUI().URL(),
                                         InstanceCountForCheckRun: i,
                                 })
-                                if createStatusErr != nil </span><span class="cov0" title="0">{
+                                if createStatusErr != nil </span><span class="cov8" title="1">{
                                         p.eventEmitter.EmitMessage(repo, zap.ErrorLevel, "RepositoryCreateStatus", fmt.Sprintf("Cannot create status: %s: %s", err, createStatusErr))
                                 }</span>
                         }

@@ -443,9 +443,9 @@
 				
 				<option value="file193">github.com/tektoncd/pipeline/pkg/reconciler/pipelinerun/resources/pipelinerunresolution.go (95.8%)</option>
 				
-				<option value="file194">github.com/tektoncd/pipeline/pkg/reconciler/pipelinerun/resources/pipelinerunstate.go (98.2%)</option>
+				<option value="file194">github.com/tektoncd/pipeline/pkg/reconciler/pipelinerun/resources/pipelinerunstate.go (97.3%)</option>
 				
-				<option value="file195">github.com/tektoncd/pipeline/pkg/reconciler/pipelinerun/resources/resultrefresolution.go (98.4%)</option>
+				<option value="file195">github.com/tektoncd/pipeline/pkg/reconciler/pipelinerun/resources/resultrefresolution.go (99.2%)</option>
 				
 				<option value="file196">github.com/tektoncd/pipeline/pkg/reconciler/pipelinerun/resources/validate_dependencies.go (100.0%)</option>
 				
@@ -32315,8 +32315,15 @@ func setTaskRunStatusBasedOnStepStatus(ctx context.Context, logger *zap.SugaredL
                 }</span>
         }
 
+        // Build a lookup map for step state provenances.
+        <span class="cov8" title="1">stepStateProvenances := make(map[string]*v1.Provenance)
+        for _, ss := range trs.Steps </span><span class="cov8" title="1">{
+                stepStateProvenances[ss.Name] = ss.Provenance
+        }</span>
+
         // Continue with extraction of termination messages
-        <span class="cov8" title="1">for _, s := range stepStatuses </span><span class="cov8" title="1">{
+        <span class="cov8" title="1">orderedStepStates := make([]v1.StepState, len(stepStatuses))
+        for i, s := range stepStatuses </span><span class="cov8" title="1">{
                 // Avoid changing the original value by modifying the pointer value.
                 state := s.State.DeepCopy()
                 taskRunStepResults := []v1.TaskRunStepResult{}
@@ -32425,19 +32432,14 @@ func setTaskRunStatusBasedOnStepStatus(ctx context.Context, logger *zap.SugaredL
                         Inputs:            sas.Inputs,
                         Outputs:           sas.Outputs,
                 }
-                foundStep := false
-                for i, ss := range trs.Steps </span><span class="cov8" title="1">{
-                        if ss.Name == stepState.Name </span><span class="cov8" title="1">{
-                                stepState.Provenance = ss.Provenance
-                                trs.Steps[i] = stepState
-                                foundStep = true
-                                break</span>
-                        }
-                }
-                <span class="cov8" title="1">if !foundStep </span><span class="cov8" title="1">{
-                        trs.Steps = append(trs.Steps, stepState)
+                if stepStateProvenance, exist := stepStateProvenances[stepState.Name]; exist </span><span class="cov8" title="1">{
+                        stepState.Provenance = stepStateProvenance
                 }</span>
+                <span class="cov8" title="1">orderedStepStates[i] = stepState</span>
         }
+        <span class="cov8" title="1">if len(orderedStepStates) &gt; 0 </span><span class="cov8" title="1">{
+                trs.Steps = orderedStepStates
+        }</span>
 
         <span class="cov8" title="1">return errors.Join(errs...)</span>
 }
@@ -38201,11 +38203,15 @@ type TaskSkipStatus struct {
 // TaskNotFoundError indicates that the resolution failed because a referenced Task couldn't be retrieved
 type TaskNotFoundError struct {
         Name string
-        Msg  string
+        Err  error
 }
 
 func (e *TaskNotFoundError) Error() string <span class="cov0" title="0">{
-        return fmt.Sprintf("Couldn't retrieve Task %q: %s", e.Name, e.Msg)
+        return fmt.Sprintf("Couldn't retrieve Task %q: %s", e.Name, e.Err.Error())
+}</span>
+
+func (e *TaskNotFoundError) Unwrap() error <span class="cov0" title="0">{
+        return e.Err
 }</span>
 
 // ResolvedPipelineTask contains a PipelineTask and its associated child PipelineRun(s) (Pipelines-in-Pipelines), TaskRun(s) or CustomRuns, if they exist.
@@ -38293,7 +38299,7 @@ func (t ResolvedPipelineTask) IsCustomTask() bool <span class="cov8" title="1">{
         return t.CustomTask
 }</span>
 
-// IsChildPipeline returns true if the PipelineTask references a child (PinP) Pipeline.
+// IsChildPipeline returns true if the PipelineTask references a child Pipeline.
 func (t ResolvedPipelineTask) IsChildPipeline() bool <span class="cov8" title="1">{
         return t.PipelineTask.PipelineSpec != nil
 }</span>
@@ -38506,9 +38512,9 @@ func (t ResolvedPipelineTask) isScheduled() bool <span class="cov8" title="1">{
         <span class="cov8" title="1">return len(t.TaskRuns) &gt; 0</span>
 }
 
-// haveAnyRunsFailed returns true when any of the child (PinP) PipelineRuns/TaskRuns/CustomRuns have succeeded condition with status set to false
+// haveAnyRunsFailed returns true when any of the child PipelineRuns/TaskRuns/CustomRuns have succeeded condition with status set to false
 func (t ResolvedPipelineTask) haveAnyRunsFailed() bool <span class="cov8" title="1">{
-        if t.IsChildPipeline() </span><span class="cov0" title="0">{
+        if t.IsChildPipeline() </span><span class="cov8" title="1">{
                 return t.haveAnyChildPipelineRunsFailed()
         }</span>
 
@@ -38519,7 +38525,7 @@ func (t ResolvedPipelineTask) haveAnyRunsFailed() bool <span class="cov8" title=
         <span class="cov8" title="1">return t.haveAnyTaskRunsFailed()</span>
 }
 
-// haveAnyChildPipelineRunsFailed returns true when any of the child (PinP) PipelineRuns have succeeded condition with status set to false
+// haveAnyChildPipelineRunsFailed returns true when any of the child PipelineRuns have succeeded condition with status set to false
 func (t ResolvedPipelineTask) haveAnyChildPipelineRunsFailed() bool <span class="cov8" title="1">{
         for _, childPipelineRun := range t.ChildPipelineRuns </span><span class="cov8" title="1">{
                 if childPipelineRun.IsFailure() </span><span class="cov8" title="1">{
@@ -38805,9 +38811,9 @@ func ValidateTaskRunSpecs(p *v1.PipelineSpec, pr *v1.PipelineRun) error <span cl
 // If the Pipeline Task is a Custom Task, it retrieves any CustomRuns and updates the ResolvedPipelineTask with this information.
 // It also sets the ResolvedPipelineTask's RunName(s) with the names of CustomRuns that should be or already have been created.
 //
-// If the Pipeline Task is a Pipeline, it retrieves any child (PinP) PipelineRuns, plus the Pipeline spec and updates the
+// If the Pipeline Task is a Pipeline, it retrieves any child PipelineRuns, plus the Pipeline spec and updates the
 // ResolvedPipelineTask with this information. It also sets the ResolvedPipelineTask's ChildPipelineRunName(s) with the names
-// of child (PinP) PipelineRuns that should be or already have been created.
+// of child PipelineRuns that should be or already have been created.
 func ResolvePipelineTask(
         ctx context.Context,
         pipelineRun v1.PipelineRun,
@@ -38967,7 +38973,7 @@ func resolveTask(
                                 }</span>
                                 <span class="cov8" title="1">return rt, &amp;TaskNotFoundError{
                                         Name: name,
-                                        Msg:  err.Error(),
+                                        Err:  err,
                                 }</span>
                         default:<span class="cov8" title="1">
                                 spec := t.Spec
@@ -38983,7 +38989,7 @@ func resolveTask(
                 // If the alpha feature is enabled, and the user has configured pipelineSpec or pipelineRef, it will enter here.
                 // Currently, the controller is not yet adapted, and to avoid a panic, an error message is provided here.
                 // TODO: Adjust the logic here once the feature is supported in the future.
-                return nil, fmt.Errorf("Currently, Task %q does not support PipelineRef, please use PipelineSpec, TaskRef or TaskSpec instead", pipelineTask.Name)</span>
+                return nil, fmt.Errorf("currently, Task %q does not support PipelineRef, please use PipelineSpec, TaskRef or TaskSpec instead", pipelineTask.Name)</span>
         }
         <span class="cov8" title="1">rt.TaskSpec.SetDefaults(ctx)
         return rt, nil</span>
@@ -39007,7 +39013,7 @@ func GetNamesOfTaskRuns(childRefs []v1.ChildStatusReference, ptName, prName stri
         <span class="cov8" title="1">return getNewRunNames(ptName, prName, numberOfTaskRuns)</span>
 }
 
-// GetNamesOfChildPipelineRuns should return unique names for child (PinP) `PipelineRuns` if one has not already been
+// GetNamesOfChildPipelineRuns should return unique names for child PipelineRuns if one has not already been
 // defined, and the existing one otherwise.
 func GetNamesOfChildPipelineRuns(childRefs []v1.ChildStatusReference, ptName, prName string, numberOfPipelineRuns int) []string <span class="cov8" title="1">{
         if pipelineRunNames := getChildPipelineRunNamesFromChildRefs(childRefs, ptName); pipelineRunNames != nil </span><span class="cov8" title="1">{
@@ -39089,7 +39095,7 @@ func getRunNamesFromChildRefs(childRefs []v1.ChildStatusReference, ptName string
         <span class="cov8" title="1">return runNames</span>
 }
 
-// getChildPipelineRunNamesFromChildRefs returns the names of child (PinP) PipelineRuns defined in childRefs that are
+// getChildPipelineRunNamesFromChildRefs returns the names of child PipelineRuns defined in childRefs that are
 // associated with the named Pipeline Task.
 func getChildPipelineRunNamesFromChildRefs(childRefs []v1.ChildStatusReference, ptName string) []string <span class="cov8" title="1">{
         var childPipelineRunNames []string
@@ -39379,10 +39385,10 @@ func (state PipelineRunState) ToMap() map[string]*ResolvedPipelineTask <span cla
         <span class="cov8" title="1">return m</span>
 }
 
-// IsBeforeFirstTaskRun returns true if the PipelineRun has not yet started its first TaskRun
+// IsBeforeFirstTaskRun returns true if the PipelineRun has not yet started its first child PipelineRun/TaskRun/CustomRun
 func (state PipelineRunState) IsBeforeFirstTaskRun() bool <span class="cov8" title="1">{
         for _, t := range state </span><span class="cov8" title="1">{
-                if len(t.CustomRuns) &gt; 0 || len(t.TaskRuns) &gt; 0 </span><span class="cov8" title="1">{
+                if len(t.ChildPipelineRuns) &gt; 0 || len(t.CustomRuns) &gt; 0 || len(t.TaskRuns) &gt; 0 </span><span class="cov8" title="1">{
                         return false
                 }</span>
         }
@@ -39400,7 +39406,13 @@ func (state PipelineRunState) IsBeforeFirstTaskRun() bool <span class="cov8" tit
 func (state PipelineRunState) AdjustStartTime(unadjustedStartTime *metav1.Time) *metav1.Time <span class="cov8" title="1">{
         adjustedStartTime := unadjustedStartTime
         for _, rpt := range state </span><span class="cov8" title="1">{
-                for _, customRun := range rpt.CustomRuns </span><span class="cov8" title="1">{
+                for _, childPipelineRun := range rpt.ChildPipelineRuns </span><span class="cov8" title="1">{
+                        if childPipelineRun.CreationTimestamp.Time.Before(adjustedStartTime.Time) </span><span class="cov8" title="1">{
+                                adjustedStartTime = &amp;childPipelineRun.CreationTimestamp
+                        }</span>
+                }
+
+                <span class="cov8" title="1">for _, customRun := range rpt.CustomRuns </span><span class="cov8" title="1">{
                         creationTime := customRun.GetObjectMeta().GetCreationTimestamp()
                         if creationTime.Time.Before(adjustedStartTime.Time) </span><span class="cov8" title="1">{
                                 adjustedStartTime = &amp;creationTime
@@ -39422,7 +39434,10 @@ func (state PipelineRunState) AdjustStartTime(unadjustedStartTime *metav1.Time) 
 func (state PipelineRunState) GetTaskRunsResults() map[string][]v1.TaskRunResult <span class="cov8" title="1">{
         results := make(map[string][]v1.TaskRunResult)
         for _, rpt := range state </span><span class="cov8" title="1">{
-                if rpt.IsCustomTask() </span><span class="cov8" title="1">{
+                if rpt.IsChildPipeline() </span><span class="cov8" title="1">{
+                        continue</span>
+                }
+                <span class="cov8" title="1">if rpt.IsCustomTask() </span><span class="cov8" title="1">{
                         continue</span>
                 }
                 <span class="cov8" title="1">if !rpt.isSuccessful() </span><span class="cov8" title="1">{
@@ -39445,7 +39460,10 @@ func (state PipelineRunState) GetTaskRunsResults() map[string][]v1.TaskRunResult
 func (state PipelineRunState) GetTaskRunsArtifacts() map[string]*v1.Artifacts <span class="cov8" title="1">{
         results := make(map[string]*v1.Artifacts)
         for _, rpt := range state </span><span class="cov8" title="1">{
-                if rpt.IsCustomTask() </span><span class="cov8" title="1">{
+                if rpt.IsChildPipeline() </span><span class="cov0" title="0">{
+                        continue</span>
+                }
+                <span class="cov8" title="1">if rpt.IsCustomTask() </span><span class="cov8" title="1">{
                         continue</span>
                 }
                 <span class="cov8" title="1">if !rpt.isSuccessful() </span><span class="cov8" title="1">{
@@ -39504,7 +39522,7 @@ func (state PipelineRunState) GetRunsResults() map[string][]v1beta1.CustomRunRes
 }
 
 // GetChildReferences returns a slice of references, including version, kind, name, and pipeline task name, for all
-// TaskRuns and Runs in the state.
+// child PipelineRuns, TaskRuns and Runs in the state.
 func (facts *PipelineRunFacts) GetChildReferences() []v1.ChildStatusReference <span class="cov8" title="1">{
         var childRefs []v1.ChildStatusReference
 
@@ -39518,6 +39536,12 @@ func (facts *PipelineRunFacts) GetChildReferences() []v1.ChildStatusReference <s
                 }
 
                 <span class="cov8" title="1">switch </span>{
+                case len(rpt.ChildPipelineRuns) != 0:<span class="cov8" title="1">
+                        for _, childPipelineRun := range rpt.ChildPipelineRuns </span><span class="cov8" title="1">{
+                                if childPipelineRun != nil </span><span class="cov8" title="1">{
+                                        childRefs = append(childRefs, rpt.getChildRefForChildPipelineRun(childPipelineRun))
+                                }</span>
+                        }
                 case len(rpt.TaskRuns) != 0:<span class="cov8" title="1">
                         for _, taskRun := range rpt.TaskRuns </span><span class="cov8" title="1">{
                                 if taskRun != nil </span><span class="cov8" title="1">{
@@ -39533,9 +39557,17 @@ func (facts *PipelineRunFacts) GetChildReferences() []v1.ChildStatusReference <s
         <span class="cov8" title="1">return childRefs</span>
 }
 
-func (t *ResolvedPipelineTask) getDisplayName(customRun *v1beta1.CustomRun, taskRun *v1.TaskRun, c v1.ChildStatusReference) v1.ChildStatusReference <span class="cov8" title="1">{
+func (t *ResolvedPipelineTask) getDisplayName(pipelineRun *v1.PipelineRun, customRun *v1beta1.CustomRun, taskRun *v1.TaskRun, c v1.ChildStatusReference) v1.ChildStatusReference <span class="cov8" title="1">{
         replacements := make(map[string]string)
-        if taskRun != nil </span><span class="cov8" title="1">{
+        if pipelineRun != nil </span><span class="cov8" title="1">{
+                for _, p := range pipelineRun.Spec.Params </span><span class="cov8" title="1">{
+                        if p.Value.Type == v1.ParamTypeString </span><span class="cov8" title="1">{
+                                replacements[fmt.Sprintf("%s.%s", v1.ParamsPrefix, p.Name)] = p.Value.StringVal
+                        }</span>
+                }
+        }
+
+        <span class="cov8" title="1">if taskRun != nil </span><span class="cov8" title="1">{
                 for _, p := range taskRun.Spec.Params </span><span class="cov8" title="1">{
                         if p.Value.Type == v1.ParamTypeString </span><span class="cov8" title="1">{
                                 replacements[fmt.Sprintf("%s.%s", v1.ParamsPrefix, p.Name)] = p.Value.StringVal
@@ -39579,6 +39611,19 @@ func (t *ResolvedPipelineTask) getDisplayName(customRun *v1beta1.CustomRun, task
         <span class="cov8" title="1">return c</span>
 }
 
+func (t *ResolvedPipelineTask) getChildRefForChildPipelineRun(pipelineRun *v1.PipelineRun) v1.ChildStatusReference <span class="cov8" title="1">{
+        c := v1.ChildStatusReference{
+                TypeMeta: runtime.TypeMeta{
+                        APIVersion: v1.SchemeGroupVersion.String(),
+                        Kind:       pipeline.PipelineRunControllerName,
+                },
+                Name:             pipelineRun.Name,
+                PipelineTaskName: t.PipelineTask.Name,
+                WhenExpressions:  t.PipelineTask.When,
+        }
+        return t.getDisplayName(pipelineRun, nil, nil, c)
+}</span>
+
 func (t *ResolvedPipelineTask) getChildRefForRun(customRun *v1beta1.CustomRun) v1.ChildStatusReference <span class="cov8" title="1">{
         c := v1.ChildStatusReference{
                 TypeMeta: runtime.TypeMeta{
@@ -39589,7 +39634,7 @@ func (t *ResolvedPipelineTask) getChildRefForRun(customRun *v1beta1.CustomRun) v
                 PipelineTaskName: t.PipelineTask.Name,
                 WhenExpressions:  t.PipelineTask.When,
         }
-        return t.getDisplayName(customRun, nil, c)
+        return t.getDisplayName(nil, customRun, nil, c)
 }</span>
 
 func (t *ResolvedPipelineTask) getChildRefForTaskRun(taskRun *v1.TaskRun) v1.ChildStatusReference <span class="cov8" title="1">{
@@ -39602,17 +39647,17 @@ func (t *ResolvedPipelineTask) getChildRefForTaskRun(taskRun *v1.TaskRun) v1.Chi
                 PipelineTaskName: t.PipelineTask.Name,
                 WhenExpressions:  t.PipelineTask.When,
         }
-        return t.getDisplayName(nil, taskRun, c)
+        return t.getDisplayName(nil, nil, taskRun, c)
 }</span>
 
-// getNextTasks returns a list of tasks which should be executed next i.e.
+// getNextTasks returns a list of pipeline tasks which should be executed next i.e.
 // a list of tasks from candidateTasks which aren't yet indicated in state to be running and
 // a list of cancelled/failed tasks from candidateTasks which haven't exhausted their retries
 func (state PipelineRunState) getNextTasks(candidateTasks sets.String) []*ResolvedPipelineTask <span class="cov8" title="1">{
         tasks := []*ResolvedPipelineTask{}
         for _, t := range state </span><span class="cov8" title="1">{
                 if _, ok := candidateTasks[t.PipelineTask.Name]; ok </span><span class="cov8" title="1">{
-                        if len(t.TaskRuns) == 0 &amp;&amp; len(t.CustomRuns) == 0 </span><span class="cov8" title="1">{
+                        if len(t.TaskRuns) == 0 &amp;&amp; len(t.CustomRuns) == 0 &amp;&amp; len(t.ChildPipelineRuns) == 0 </span><span class="cov8" title="1">{
                                 tasks = append(tasks, t)
                         }</span>
                 }
@@ -39740,7 +39785,7 @@ func (facts *PipelineRunFacts) IsFinalTaskStarted() bool <span class="cov8" titl
 }
 
 // GetPipelineConditionStatus will return the Condition that the PipelineRun prName should be
-// updated with, based on the status of the TaskRuns in state.
+// updated with, based on the status of the child PipelineRuns/TaskRuns/CustomRuns in state.
 func (facts *PipelineRunFacts) GetPipelineConditionStatus(ctx context.Context, pr *v1.PipelineRun, logger *zap.SugaredLogger, c clock.PassiveClock) *apis.Condition <span class="cov8" title="1">{
         // We have 4 different states here:
         // 1. Timed out -&gt; Failed
@@ -39816,7 +39861,7 @@ func (facts *PipelineRunFacts) GetPipelineConditionStatus(ctx context.Context, p
                         reason = v1.PipelineRunReasonCancelled.String()
                         status = corev1.ConditionFalse</span>
                 }
-                <span class="cov8" title="1">logger.Infof("All TaskRuns have finished for PipelineRun %s so it has finished", pr.Name)
+                <span class="cov8" title="1">logger.Infof("All child PipelineRuns/TaskRuns/CustomRuns have finished for PipelineRun %s so it has finished", pr.Name)
                 return &amp;apis.Condition{
                         Type:    apis.ConditionSucceeded,
                         Status:  status,
@@ -39878,8 +39923,9 @@ func (facts *PipelineRunFacts) GetSkippedTasks() []v1.SkippedTask <span class="c
         <span class="cov8" title="1">return skipped</span>
 }
 
-// GetPipelineTaskStatus returns the status of a PipelineTask depending on its taskRun
-// the checks are implemented such that the finally tasks are requesting status of the dag tasks
+// GetPipelineTaskStatus returns the status of a PipelineTask depending on its child
+// PipelineRun/TaskRun/CustomRun. The checks are implemented such that the finally tasks
+// are requesting status of the dag tasks.
 func (facts *PipelineRunFacts) GetPipelineTaskStatus() map[string]string <span class="cov8" title="1">{
         // construct a map of tasks.&lt;pipelineTask&gt;.status and its state
         tStatus := make(map[string]string)
@@ -39905,13 +39951,25 @@ func (facts *PipelineRunFacts) GetPipelineTaskStatus() map[string]string <span c
         // initialize aggregate status of all dag tasks to None
         <span class="cov8" title="1">aggregateStatus := PipelineTaskStateNone
         if facts.checkDAGTasksDone() </span><span class="cov8" title="1">{
-                // all dag tasks are done, change the aggregate status to succeeded
+                // all dag pipeline tasks are done, change the aggregate status to succeeded
                 // will reset it to failed/skipped if needed
                 aggregateStatus = v1.PipelineRunReasonSuccessful.String()
                 for _, t := range facts.State </span><span class="cov8" title="1">{
                         if facts.isDAGTask(t.PipelineTask.Name) </span><span class="cov8" title="1">{
-                                // if any of the dag task failed, change the aggregate status to failed and return
-                                if !t.IsCustomTask() &amp;&amp; t.haveAnyTaskRunsFailed() || t.IsCustomTask() &amp;&amp; t.haveAnyCustomRunsFailed() </span><span class="cov8" title="1">{
+                                // if any of the dag pipeline tasks failed, change the aggregate status to failed and return
+                                if t.IsChildPipeline() &amp;&amp; t.haveAnyChildPipelineRunsFailed() </span><span class="cov8" title="1">{
+                                        aggregateStatus = v1.PipelineRunReasonFailed.String()
+                                        break</span>
+                                }
+
+                                <span class="cov8" title="1">if t.IsCustomTask() &amp;&amp; t.haveAnyCustomRunsFailed() </span><span class="cov0" title="0">{
+                                        aggregateStatus = v1.PipelineRunReasonFailed.String()
+                                        break</span>
+                                }
+
+                                // if it's not a custom task or a child pipeline it's a task so we only
+                                // need to check if any TaskRuns failed
+                                <span class="cov8" title="1">if t.haveAnyTaskRunsFailed() </span><span class="cov8" title="1">{
                                         aggregateStatus = v1.PipelineRunReasonFailed.String()
                                         break</span>
                                 }
@@ -40165,7 +40223,7 @@ func removeDup(refs ResolvedResultRefs) ResolvedResultRefs <span class="cov8" ti
                 if order[i].PipelineTask &gt; order[j].PipelineTask </span><span class="cov0" title="0">{
                         return false
                 }</span>
-                <span class="cov8" title="1">if order[i].Result &gt; order[j].Result </span><span class="cov0" title="0">{
+                <span class="cov8" title="1">if order[i].Result &gt; order[j].Result </span><span class="cov8" title="1">{
                         return false
                 }</span>
                 <span class="cov8" title="1">return true</span>
@@ -42850,6 +42908,8 @@ func resolveStepRef(ctx context.Context, taskSpec v1.TaskSpec, taskRun *v1.TaskR
 
 // updateTaskRunProvenance update the TaskRun's status with source provenance information for a given step
 func updateTaskRunProvenance(taskRun *v1.TaskRun, stepName string, stepIndex int, source *v1.RefSource, stepStatusIndex map[string]int) <span class="cov8" title="1">{
+        var provenance *v1.Provenance
+
         // The StepState already exists. Update it in place
         if index, found := stepStatusIndex[stepName]; found </span><span class="cov8" title="1">{
                 if taskRun.Status.Steps[index].Provenance == nil </span><span class="cov8" title="1">{
@@ -42859,20 +42919,37 @@ func updateTaskRunProvenance(taskRun *v1.TaskRun, stepName string, stepIndex int
                 return</span>
         }
 
+        <span class="cov8" title="1">provenance = &amp;v1.Provenance{RefSource: source}
+
         // No existing StepState found. Create and append a new one
-        <span class="cov8" title="1">newState := v1.StepState{
+        newState := v1.StepState{
                 Name:       pod.TrimStepPrefix(pod.StepName(stepName, stepIndex)),
-                Provenance: &amp;v1.Provenance{RefSource: source},
+                Provenance: provenance,
         }
         taskRun.Status.Steps = append(taskRun.Status.Steps, newState)</span>
 }
 
 // GetStepActionsData extracts the StepActions and merges them with the inlined Step specification.
 func GetStepActionsData(ctx context.Context, taskSpec v1.TaskSpec, taskRun *v1.TaskRun, tekton clientset.Interface, k8s kubernetes.Interface, requester remoteresource.Requester) ([]v1.Step, error) <span class="cov8" title="1">{
-        // If there are no step-ref to resolve, return immediately
-        if !hasStepRefs(&amp;taskSpec) </span><span class="cov8" title="1">{
-                return taskSpec.Steps, nil
+        steps := make([]v1.Step, len(taskSpec.Steps))
+
+        // Init step states and known step states indexes lookup map
+        if taskRun.Status.Steps == nil </span><span class="cov8" title="1">{
+                taskRun.Status.Steps = []v1.StepState{}
         }</span>
+        <span class="cov8" title="1">stepStatusIndex := make(map[string]int, len(taskRun.Status.Steps))
+        for i, stepState := range taskRun.Status.Steps </span><span class="cov8" title="1">{
+                stepStatusIndex[stepState.Name] = i
+        }</span>
+
+        // If there are no step-ref to resolve, return immediately with nil provenance
+        <span class="cov8" title="1">if !hasStepRefs(&amp;taskSpec) </span><span class="cov8" title="1">{
+                for i, step := range taskSpec.Steps </span><span class="cov8" title="1">{
+                        steps[i] = step
+                        updateTaskRunProvenance(taskRun, step.Name, i, nil, stepStatusIndex) // create StepState with nil provenance
+                }</span>
+                <span class="cov8" title="1">return steps, nil</span>
+        }
 
         // Phase 1: Concurrently resolve all StepActions
         <span class="cov8" title="1">stepRefConcurrencyLimit := config.FromContextOrDefaults(ctx).Defaults.DefaultStepRefConcurrencyLimit
@@ -42901,27 +42978,16 @@ func GetStepActionsData(ctx context.Context, taskSpec v1.TaskSpec, taskRun *v1.T
         }</span>
 
         // Phase 2: Sequentially merge results into the final step list and update status
-        <span class="cov8" title="1">if taskRun.Status.Steps == nil </span><span class="cov8" title="1">{
-                taskRun.Status.Steps = []v1.StepState{}
-        }</span>
-        <span class="cov8" title="1">stepStatusIndex := make(map[string]int, len(taskRun.Status.Steps))
-        for i, stepState := range taskRun.Status.Steps </span><span class="cov8" title="1">{
-                stepStatusIndex[stepState.Name] = i
-        }</span>
-
-        <span class="cov8" title="1">steps := make([]v1.Step, len(taskSpec.Steps))
-        for i, step := range taskSpec.Steps </span><span class="cov8" title="1">{
+        <span class="cov8" title="1">for i, step := range taskSpec.Steps </span><span class="cov8" title="1">{
                 if step.Ref == nil </span><span class="cov8" title="1">{
                         steps[i] = step
+                        updateTaskRunProvenance(taskRun, step.Name, i, nil, stepStatusIndex) // create StepState for inline step with nil provenance
                         continue</span>
                 }
 
                 <span class="cov8" title="1">stepRefResolution := stepRefResolutions[i]
                 steps[i] = *stepRefResolution.resolvedStep
-
-                if stepRefResolution.source != nil </span><span class="cov8" title="1">{
-                        updateTaskRunProvenance(taskRun, stepRefResolution.resolvedStep.Name, i, stepRefResolution.source, stepStatusIndex)
-                }</span>
+                updateTaskRunProvenance(taskRun, stepRefResolution.resolvedStep.Name, i, stepRefResolution.source, stepStatusIndex)</span>
         }
 
         <span class="cov8" title="1">return steps, nil</span>
@@ -47183,6 +47249,7 @@ import (
         "slices"
         "strings"
 
+        "github.com/tektoncd/pipeline/pkg/reconciler/apiserver"
         apierrors "k8s.io/apimachinery/pkg/api/errors"
 )
 
@@ -47313,7 +47380,7 @@ func ReasonError(err error) (string, error) <span class="cov0" title="0">{
 // IsErrTransient returns true if an error returned by GetTask/GetStepAction is retryable.
 func IsErrTransient(err error) bool <span class="cov0" title="0">{
         switch </span>{
-        case apierrors.IsConflict(err), apierrors.IsServerTimeout(err), apierrors.IsTimeout(err), apierrors.IsTooManyRequests(err):<span class="cov0" title="0">
+        case apierrors.IsConflict(err), apierrors.IsServerTimeout(err), apierrors.IsTimeout(err), apierrors.IsTooManyRequests(err), errors.Is(err, apiserver.ErrCouldntValidateObjectRetryable):<span class="cov0" title="0">
                 return true</span>
         default:<span class="cov0" title="0">
                 return slices.ContainsFunc([]string{errEtcdLeaderChange, context.DeadlineExceeded.Error()}, func(s string) bool </span><span class="cov0" title="0">{

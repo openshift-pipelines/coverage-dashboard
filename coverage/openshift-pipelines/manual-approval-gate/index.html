@@ -302,6 +302,9 @@ func update(gvr *schema.GroupVersionResource, dynamic dynamic.Interface, at *v1a
                                                                 if existing.Input != opts.Input </span><span class="cov0" title="0">{
                                                                         at.Spec.Approvers[i].Users[j].Input = opts.Input
                                                                 }</span>
+                                                                <span class="cov0" title="0">if existing.Message != opts.Message </span><span class="cov0" title="0">{
+                                                                        at.Spec.Approvers[i].Users[j].Message = opts.Message
+                                                                }</span>
                                                                 <span class="cov0" title="0">break</span>
                                                         }
                                                 }
@@ -309,6 +312,7 @@ func update(gvr *schema.GroupVersionResource, dynamic dynamic.Interface, at *v1a
                                                         newUser := v1alpha1.UserDetails{
                                                                 Name:  opts.Username,
                                                                 Input: opts.Input,
+                                                                Message: opts.Message,
                                                         }
                                                         at.Spec.Approvers[i].Users = append(at.Spec.Approvers[i].Users, newUser)
                                                 }</span>
@@ -437,6 +441,7 @@ type ApprovalTaskSpec struct {
 type UserDetails struct {
         Name  string `json:"name"`
         Input string `json:"input"`
+        Message string `json:"message,omitempty"`
 }
 
 type ApproverDetails struct {
@@ -3609,7 +3614,7 @@ func updateApprovalState(ctx context.Context, approvaltaskClientSet versioned.In
                                         groupMembers = append(groupMembers, v1alpha1.GroupMemberState{
                                                 Name:     user.Name,
                                                 Response: userResponse,
-                                                Message:  approver.Message, // Inherit message from group level
+                                                Message:  user.Message, // Inherit message from user level
                                         })
                                 }</span>
                         }
@@ -3898,7 +3903,7 @@ func (r *reconciler) Admit(ctx context.Context, request *admissionv1.AdmissionRe
                 return &amp;admissionv1.AdmissionResponse{
                         Allowed: false,
                         Result: &amp;metav1.Status{
-                                Message: "ApprovalTask has already reached its final state",
+                                Message: "ApprovalTask has already reached it's final state",
                         },
                 }
         }</span>
