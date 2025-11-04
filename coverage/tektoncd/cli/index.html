@@ -1438,7 +1438,7 @@ func PersistentPreRunE(p cli.Params) func(*cobra.Command, []string) error <span 
 
 func WarnExperimental(cmd *cobra.Command) error <span class="cov0" title="0">{
         if IsExperimental(cmd) </span><span class="cov0" title="0">{
-                fmt.Fprintf(cmd.OutOrStderr(), "*Warning*: This is an experimental command, it's usage and behavior can change in the next release(s)\n")
+                fmt.Fprintf(cmd.OutOrStderr(), "*Warning*: This is an experimental command, its usage and behavior can change in the next release(s)\n")
         }</span>
         <span class="cov0" title="0">return nil</span>
 }
