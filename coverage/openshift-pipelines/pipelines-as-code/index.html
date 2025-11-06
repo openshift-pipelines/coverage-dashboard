@@ -293,7 +293,7 @@
 				
 				<option value="file118">github.com/openshift-pipelines/pipelines-as-code/pkg/provider/github/status.go (68.7%)</option>
 				
-				<option value="file119">github.com/openshift-pipelines/pipelines-as-code/pkg/provider/gitlab/acl.go (97.9%)</option>
+				<option value="file119">github.com/openshift-pipelines/pipelines-as-code/pkg/provider/gitlab/acl.go (100.0%)</option>
 				
 				<option value="file120">github.com/openshift-pipelines/pipelines-as-code/pkg/provider/gitlab/detect.go (90.0%)</option>
 				
@@ -17132,7 +17132,7 @@ func (v *Provider) IsAllowedOwnersFile(_ context.Context, event *info.Event) (bo
         }</span>
         // OWNERS_ALIASES file existence is not required, if we get "not found" continue
         <span class="cov8" title="1">ownerAliasesContent, resp, err := v.getObject("OWNERS_ALIASES", event.DefaultBranch, v.targetProjectID)
-        if resp.StatusCode != http.StatusOK &amp;&amp; resp.StatusCode != http.StatusNotFound </span><span class="cov0" title="0">{
+        if resp.StatusCode != http.StatusOK &amp;&amp; resp.StatusCode != http.StatusNotFound </span><span class="cov8" title="1">{
                 return false, err
         }</span>
         <span class="cov8" title="1">allowed, _ := acl.UserInOwnerFile(string(ownerContent), string(ownerAliasesContent), event.Sender)

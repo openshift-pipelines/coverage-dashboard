@@ -159,7 +159,7 @@
 				
 				<option value="file51">github.com/tektoncd/triggers/pkg/interceptors/cel/triggers.go (88.2%)</option>
 				
-				<option value="file52">github.com/tektoncd/triggers/pkg/interceptors/github/github.go (92.7%)</option>
+				<option value="file52">github.com/tektoncd/triggers/pkg/interceptors/github/github.go (92.6%)</option>
 				
 				<option value="file53">github.com/tektoncd/triggers/pkg/interceptors/gitlab/gitlab.go (89.7%)</option>
 				
@@ -6281,10 +6281,7 @@ func (w *InterceptorImpl) Process(ctx context.Context, r *triggersv1.Interceptor
                 }</span>
                 <span class="cov8" title="1">header := headers.Get("X-Hub-Signature-256")
                 if header == "" </span><span class="cov8" title="1">{
-                        header = headers.Get("X-Hub-Signature")
-                }</span>
-                <span class="cov8" title="1">if header == "" </span><span class="cov8" title="1">{
-                        return interceptors.Fail(codes.FailedPrecondition, "Must set X-Hub-Signature-256 or X-Hub-Signature header")
+                        return interceptors.Fail(codes.FailedPrecondition, "no X-Hub-Signature-256 header set")
                 }</span>
 
                 <span class="cov8" title="1">if r.Context == nil </span><span class="cov8" title="1">{
