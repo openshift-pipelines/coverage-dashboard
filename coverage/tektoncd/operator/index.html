@@ -185,7 +185,7 @@
 				
 				<option value="file64">github.com/tektoncd/operator/pkg/reconciler/common/transformer_injectlabel.go (72.4%)</option>
 				
-				<option value="file65">github.com/tektoncd/operator/pkg/reconciler/common/transformers.go (72.0%)</option>
+				<option value="file65">github.com/tektoncd/operator/pkg/reconciler/common/transformers.go (72.1%)</option>
 				
 				<option value="file66">github.com/tektoncd/operator/pkg/reconciler/common/unstructured.go (100.0%)</option>
 				
@@ -9487,6 +9487,8 @@ func DeploymentImages(images map[string]string) mf.Transformer <span class="cov8
 
                 <span class="cov8" title="1">containers := d.Spec.Template.Spec.Containers
                 replaceContainerImages(containers, images)
+                initContainers := d.Spec.Template.Spec.InitContainers
+                replaceContainerImages(initContainers, images)
 
                 unstrObj, err := runtime.DefaultUnstructuredConverter.ToUnstructured(d)
                 if err != nil </span><span class="cov0" title="0">{
