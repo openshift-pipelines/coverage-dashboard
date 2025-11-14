@@ -239,7 +239,7 @@
 				
 				<option value="file91">github.com/openshift-pipelines/pipelines-as-code/pkg/pipelineascode/errors.go (100.0%)</option>
 				
-				<option value="file92">github.com/openshift-pipelines/pipelines-as-code/pkg/pipelineascode/match.go (82.9%)</option>
+				<option value="file92">github.com/openshift-pipelines/pipelines-as-code/pkg/pipelineascode/match.go (83.7%)</option>
 				
 				<option value="file93">github.com/openshift-pipelines/pipelines-as-code/pkg/pipelineascode/pipelineascode.go (72.1%)</option>
 				
@@ -11053,9 +11053,14 @@ func filterRunningPipelineRunOnTargetTest(testPipeline string, prs []*tektonv1.P
 // - the template variable with the one from the event (this includes the remote pipeline that has template variables).
 func (p *PacRun) changePipelineRun(ctx context.Context, repo *v1alpha1.Repository, prs []*tektonv1.PipelineRun) error <span class="cov8" title="1">{
         for k, pr := range prs </span><span class="cov8" title="1">{
-                b, err := json.Marshal(pr)
-                if err != nil </span><span class="cov0" title="0">{
-                        return err
+                prName := pr.GetName()
+                if prName == "" </span><span class="cov8" title="1">{
+                        prName = pr.GetGenerateName()
+                }</span>
+
+                <span class="cov8" title="1">b, err := json.Marshal(pr)
+                if err != nil </span><span class="cov8" title="1">{
+                        return fmt.Errorf("failed to marshal PipelineRun %s: %w", prName, err)
                 }</span>
 
                 <span class="cov8" title="1">name := secrets.GenerateBasicAuthSecretName()
@@ -11067,7 +11072,7 @@ func (p *PacRun) changePipelineRun(ctx context.Context, repo *v1alpha1.Repositor
                 var np *tektonv1.PipelineRun
                 err = json.Unmarshal([]byte(processed), &amp;np)
                 if err != nil </span><span class="cov0" title="0">{
-                        return err
+                        return fmt.Errorf("failed to unmarshal PipelineRun %s: %w", prName, err)
                 }</span>
                 // don't crash when we don't have any annotations
                 <span class="cov8" title="1">if np.Annotations == nil </span><span class="cov8" title="1">{

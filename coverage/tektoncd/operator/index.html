@@ -401,7 +401,7 @@
 				
 				<option value="file172">github.com/tektoncd/operator/pkg/reconciler/openshift/tektonresult/controller.go (0.0%)</option>
 				
-				<option value="file173">github.com/tektoncd/operator/pkg/reconciler/openshift/tektonresult/extension.go (49.3%)</option>
+				<option value="file173">github.com/tektoncd/operator/pkg/reconciler/openshift/tektonresult/extension.go (54.8%)</option>
 				
 				<option value="file174">github.com/tektoncd/operator/pkg/reconciler/openshift/tektontrigger/controller.go (0.0%)</option>
 				
@@ -27807,7 +27807,6 @@ import (
 const (
         // manifests console plugin yaml directory location
         routeRBACYamlDirectory  = "static/tekton-results/route-rbac"
-        internalDBYamlDirectory = "static/tekton-results/internal-db"
         logsRBACYamlDirectory   = "static/tekton-results/logs-rbac"
         deploymentAPI           = "tekton-results-api"
         serviceAPI              = "tekton-results-api-service"
@@ -27833,11 +27832,6 @@ func OpenShiftExtension(ctx context.Context) common.Extension <span class="cov0"
                 logger.Fatalf("Failed to fetch route rbac static manifest: %v", err)
         }</span>
 
-        <span class="cov0" title="0">internalDBManifest, err := getDBManifest()
-        if err != nil </span><span class="cov0" title="0">{
-                logger.Fatalf("Failed to fetch internal db static manifest: %v", err)
-        }</span>
-
         <span class="cov0" title="0">logsRBACManifest, err := getloggingRBACManifest()
         if err != nil </span><span class="cov0" title="0">{
                 logger.Fatalf("Failed to fetch logs RBAC manifest: %v", err)
@@ -27846,9 +27840,8 @@ func OpenShiftExtension(ctx context.Context) common.Extension <span class="cov0"
         <span class="cov0" title="0">ext := &amp;openshiftExtension{
                 installerSetClient: client.NewInstallerSetClient(operatorclient.Get(ctx).OperatorV1alpha1().TektonInstallerSets(),
                         version, "results-ext", v1alpha1.KindTektonResult, nil),
-                internalDBManifest: internalDBManifest,
-                routeManifest:      routeManifest,
-                logsRBACManifest:   logsRBACManifest,
+                routeManifest:    routeManifest,
+                logsRBACManifest: logsRBACManifest,
         }
         return ext</span>
 }
@@ -27856,9 +27849,7 @@ func OpenShiftExtension(ctx context.Context) common.Extension <span class="cov0"
 type openshiftExtension struct {
         installerSetClient *client.InstallerSetClient
         routeManifest      *mf.Manifest
-        internalDBManifest *mf.Manifest
         logsRBACManifest   *mf.Manifest
-        removePreset       bool
 }
 
 func (oe openshiftExtension) Transformers(comp v1alpha1.TektonComponent) []mf.Transformer <span class="cov0" title="0">{
@@ -27881,17 +27872,7 @@ func (oe *openshiftExtension) PreReconcile(ctx context.Context, tc v1alpha1.Tekt
         result := tc.(*v1alpha1.TektonResult)
         mf := mf.Manifest{}
 
-        if !result.Spec.IsExternalDB </span><span class="cov0" title="0">{
-                mf = *oe.internalDBManifest
-                oe.removePreset = true
-        }</span>
-        <span class="cov0" title="0">if result.Spec.IsExternalDB &amp;&amp; oe.removePreset </span><span class="cov0" title="0">{
-                if err := oe.installerSetClient.CleanupPreSet(ctx); err != nil </span><span class="cov0" title="0">{
-                        return err
-                }</span>
-                <span class="cov0" title="0">oe.removePreset = false</span>
-        }
-        <span class="cov0" title="0">if (result.Spec.LokiStackName != "" &amp;&amp; result.Spec.LokiStackNamespace != "") ||
+        if (result.Spec.LokiStackName != "" &amp;&amp; result.Spec.LokiStackNamespace != "") ||
                 strings.EqualFold(result.Spec.LogsType, "LOKI") </span><span class="cov0" title="0">{
                 mf = mf.Append(*oe.logsRBACManifest)
         }</span>
@@ -27927,15 +27908,6 @@ func getRouteManifest() (*mf.Manifest, error) <span class="cov8" title="1">{
                 return nil, err
         }</span>
         <span class="cov8" title="1">return manifest, nil</span>
-}
-
-func getDBManifest() (*mf.Manifest, error) <span class="cov0" title="0">{
-        manifest := &amp;mf.Manifest{}
-        internalDB := filepath.Join(common.ComponentBaseDir(), internalDBYamlDirectory)
-        if err := common.AppendManifest(manifest, internalDB); err != nil </span><span class="cov0" title="0">{
-                return nil, err
-        }</span>
-        <span class="cov0" title="0">return manifest, nil</span>
 }
 
 // function to add fine grained access control to results api if results config specifies that
