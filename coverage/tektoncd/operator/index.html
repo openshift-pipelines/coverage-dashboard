@@ -277,7 +277,7 @@
 				
 				<option value="file110">github.com/tektoncd/operator/pkg/reconciler/kubernetes/tektonpipeline/reconcile.go (0.0%)</option>
 				
-				<option value="file111">github.com/tektoncd/operator/pkg/reconciler/kubernetes/tektonpipeline/transform.go (89.5%)</option>
+				<option value="file111">github.com/tektoncd/operator/pkg/reconciler/kubernetes/tektonpipeline/transform.go (88.6%)</option>
 				
 				<option value="file112">github.com/tektoncd/operator/pkg/reconciler/kubernetes/tektonpruner/controller.go (0.0%)</option>
 				
@@ -4712,6 +4712,8 @@ type PipelineProperties struct {
 
         PipelineMetricsProperties `json:",inline"`
         // +optional
+        TracingProperties `json:",inline"`
+        // +optional
         OptionalPipelineProperties `json:",inline"`
         // +optional
         Resolvers `json:",inline"`
@@ -4749,6 +4751,19 @@ type PipelineMetricsProperties struct {
         MetricsPipelinerunLevel        string `json:"metrics.pipelinerun.level,omitempty"`
         MetricsPipelinerunDurationType string `json:"metrics.pipelinerun.duration-type,omitempty"`
         CountWithReason                *bool  `json:"metrics.count.enable-reason,omitempty"`
+}
+
+// TracingProperties defines the fields which are configurable for tracing
+type TracingProperties struct {
+        // Enabled controls whether tracing is enabled or not
+        // +optional
+        Enabled *bool `json:"traces.enabled,omitempty"`
+        // Endpoint is the URL for the OpenTelemetry trace collector
+        // +optional
+        Endpoint string `json:"traces.endpoint,omitempty"`
+        // CredentialsSecret is the name of the secret containing credentials for the tracing endpoint
+        // +optional
+        CredentialsSecret string `json:"traces.credentialsSecret,omitempty"`
 }
 
 // Resolvers defines the fields to configure resolvers
@@ -17567,6 +17582,7 @@ const (
         FeatureFlag                                  = "feature-flags"
         ConfigDefaults                               = "config-defaults"
         ConfigMetrics                                = "config-observability"
+        ConfigTracing                                = "config-tracing"
         ResolverFeatureFlag                          = "resolvers-feature-flags"
         bundleResolverConfig                         = "bundleresolver-config"
         clusterResolverConfig                        = "cluster-resolver-config"
@@ -17608,6 +17624,7 @@ func filterAndTransform(extension common.Extension) client.FilterAndTransform <s
                         common.AddConfigMapValues(FeatureFlag, pipeline.Spec.PipelineProperties),
                         common.AddConfigMapValues(ConfigDefaults, pipeline.Spec.OptionalPipelineProperties),
                         common.AddConfigMapValues(ConfigMetrics, pipeline.Spec.PipelineMetricsProperties),
+                        addTracingConfigValues(pipeline),
                         common.AddConfigMapValues(ResolverFeatureFlag, pipeline.Spec.Resolvers),
                         common.DeploymentImages(images),
                         common.StatefulSetImages(images),
@@ -17717,6 +17734,50 @@ func updateResolverConfigEnvironmentsInDeployment(pipelineCR *v1alpha1.TektonPip
 
                 // convert deployment to unstructured object
                 <span class="cov8" title="1">obj, err := apimachineryRuntime.DefaultUnstructuredConverter.ToUnstructured(dep)
+                if err != nil </span><span class="cov0" title="0">{
+                        return err
+                }</span>
+                <span class="cov8" title="1">u.SetUnstructuredContent(obj)
+
+                return nil</span>
+        }
+}
+
+// addTracingConfigValues adds tracing configuration to config-tracing ConfigMap
+// It strips the "traces." prefix from the JSON tags to match upstream expectations
+func addTracingConfigValues(pipelineCR *v1alpha1.TektonPipeline) mf.Transformer <span class="cov8" title="1">{
+        return func(u *unstructured.Unstructured) error </span><span class="cov8" title="1">{
+                if u.GetKind() != "ConfigMap" || u.GetName() != ConfigTracing </span><span class="cov8" title="1">{
+                        return nil
+                }</span>
+
+                <span class="cov8" title="1">cm := &amp;corev1.ConfigMap{}
+                err := apimachineryRuntime.DefaultUnstructuredConverter.FromUnstructured(u.Object, cm)
+                if err != nil </span><span class="cov0" title="0">{
+                        return err
+                }</span>
+                <span class="cov8" title="1">if cm.Data == nil </span><span class="cov0" title="0">{
+                        cm.Data = map[string]string{}
+                }</span>
+
+                // Map traces.enabled -&gt; enabled
+                <span class="cov8" title="1">if pipelineCR.Spec.TracingProperties.Enabled != nil </span><span class="cov8" title="1">{
+                        if *pipelineCR.Spec.TracingProperties.Enabled </span><span class="cov8" title="1">{
+                                cm.Data["enabled"] = "true"
+                        }</span> else<span class="cov8" title="1"> {
+                                cm.Data["enabled"] = "false"
+                        }</span>
+                }
+
+                <span class="cov8" title="1">if pipelineCR.Spec.TracingProperties.Endpoint != "" </span><span class="cov8" title="1">{
+                        cm.Data["endpoint"] = pipelineCR.Spec.TracingProperties.Endpoint
+                }</span>
+
+                <span class="cov8" title="1">if pipelineCR.Spec.TracingProperties.CredentialsSecret != "" </span><span class="cov8" title="1">{
+                        cm.Data["credentialsSecret"] = pipelineCR.Spec.TracingProperties.CredentialsSecret
+                }</span>
+
+                <span class="cov8" title="1">obj, err := apimachineryRuntime.DefaultUnstructuredConverter.ToUnstructured(cm)
                 if err != nil </span><span class="cov0" title="0">{
                         return err
                 }</span>
