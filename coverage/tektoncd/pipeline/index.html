@@ -505,9 +505,9 @@
 				
 				<option value="file224">github.com/tektoncd/pipeline/pkg/remoteresolution/resolver/framework/cache/annotated_resource.go (100.0%)</option>
 				
-				<option value="file225">github.com/tektoncd/pipeline/pkg/remoteresolution/resolver/framework/cache/cache.go (84.7%)</option>
+				<option value="file225">github.com/tektoncd/pipeline/pkg/remoteresolution/resolver/framework/cache/cache.go (85.5%)</option>
 				
-				<option value="file226">github.com/tektoncd/pipeline/pkg/remoteresolution/resolver/framework/cache/clock.go (66.7%)</option>
+				<option value="file226">github.com/tektoncd/pipeline/pkg/remoteresolution/resolver/framework/cache/clock.go (100.0%)</option>
 				
 				<option value="file227">github.com/tektoncd/pipeline/pkg/remoteresolution/resolver/framework/cache/configstore.go (59.3%)</option>
 				
@@ -46534,8 +46534,6 @@ limitations under the License.
 package cache
 
 import (
-        "time"
-
         v1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
         resolutionframework "github.com/tektoncd/pipeline/pkg/resolution/resolver/framework"
 )
@@ -46563,23 +46561,23 @@ type annotatedResource struct {
         annotations map[string]string
 }
 
-// newAnnotatedResource creates a new annotatedResource with cache annotations
-func newAnnotatedResource(resource resolutionframework.ResolvedResource, resolverType, operation string, clock Clock) *annotatedResource <span class="cov8" title="1">{
+func newAnnotatedResource(
+        resource resolutionframework.ResolvedResource,
+        resolverType,
+        operation string,
+        timestamp string,
+) *annotatedResource <span class="cov8" title="1">{
         // Create a new map to avoid concurrent map writes when the same resource
         // is being annotated from multiple goroutines
         existingAnnotations := resource.Annotations()
         annotations := make(map[string]string)
 
-        // Copy existing annotations to new map
-        if existingAnnotations != nil </span><span class="cov8" title="1">{
-                for k, v := range existingAnnotations </span><span class="cov8" title="1">{
-                        annotations[k] = v
-                }</span>
-        }
+        for k, v := range existingAnnotations </span><span class="cov8" title="1">{
+                annotations[k] = v
+        }</span>
 
-        // Add cache annotations
         <span class="cov8" title="1">annotations[cacheAnnotationKey] = cacheValueTrue
-        annotations[cacheTimestampKey] = clock.Now().Format(time.RFC3339)
+        annotations[cacheTimestampKey] = timestamp
         annotations[cacheResolverTypeKey] = resolverType
         annotations[cacheOperationKey] = operation
 
@@ -46645,15 +46643,19 @@ type resolverCache struct {
         logger  *zap.SugaredLogger
         ttl     time.Duration
         maxSize int
-        clock   Clock
+        clock   utilcache.Clock
 }
 
 func newResolverCache(maxSize int, ttl time.Duration) *resolverCache <span class="cov8" title="1">{
+        return newResolverCacheWithClock(maxSize, ttl, realClock{})
+}</span>
+
+func newResolverCacheWithClock(maxSize int, ttl time.Duration, clock utilcache.Clock) *resolverCache <span class="cov8" title="1">{
         return &amp;resolverCache{
-                cache:   utilcache.NewLRUExpireCache(maxSize),
+                cache:   utilcache.NewLRUExpireCacheWithClock(maxSize, clock),
                 ttl:     ttl,
                 maxSize: maxSize,
-                clock:   realClock{},
+                clock:   clock,
         }
 }</span>
 
@@ -46695,7 +46697,8 @@ func (c *resolverCache) Get(resolverType string, params []pipelinev1.Param) (res
         }</span>
 
         <span class="cov8" title="1">c.infow("Cache hit", "key", key)
-        return newAnnotatedResource(resource, resolverType, cacheOperationRetrieve, c.clock), true</span>
+        timestamp := c.clock.Now().Format(time.RFC3339)
+        return newAnnotatedResource(resource, resolverType, cacheOperationRetrieve, timestamp), true</span>
 }
 
 func (c *resolverCache) infow(msg string, keysAndValues ...any) <span class="cov8" title="1">{
@@ -46714,7 +46717,8 @@ func (c *resolverCache) Add(
         key := generateCacheKey(resolverType, params)
         c.infow("Adding to cache", "key", key, "expiration", c.ttl)
 
-        annotatedResource := newAnnotatedResource(resource, resolverType, cacheOperationStore, c.clock)
+        timestamp := c.clock.Now().Format(time.RFC3339)
+        annotatedResource := newAnnotatedResource(resource, resolverType, cacheOperationStore, timestamp)
 
         c.cache.Add(key, annotatedResource, c.ttl)
 
@@ -46816,14 +46820,6 @@ package cache
 
 import "time"
 
-// Clock is an interface for getting the current time.
-// This allows for testing without relying on actual time for timestamp generation.
-// Note: The underlying k8s LRUExpireCache uses real time for TTL expiration checks,
-// so we cannot use a fake clock to control cache expiration in tests.
-type Clock interface {
-        Now() time.Time
-}
-
 // realClock implements Clock using the actual system time.
 type realClock struct{}
 
@@ -46842,7 +46838,7 @@ func (f *fakeClock) Now() time.Time <span class="cov8" title="1">{
 }</span>
 
 // Advance moves the fake clock forward by the given duration.
-func (f *fakeClock) Advance(d time.Duration) <span class="cov0" title="0">{
+func (f *fakeClock) Advance(d time.Duration) <span class="cov8" title="1">{
         f.now = f.now.Add(d)
 }</span>
 </pre>
