@@ -466,9 +466,7 @@ package actions
 
 import (
         "context"
-        "fmt"
         "io"
-        "os"
 
         "github.com/tektoncd/cli/pkg/cli"
         metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -494,7 +492,6 @@ func PrintObjects(groupResource schema.GroupVersionResource, w io.Writer, dynami
 func ListV1(gr schema.GroupVersionResource, c *cli.Clients, opts metav1.ListOptions, ns string, obj interface{}) error <span class="cov0" title="0">{
         unstructuredObj, err := list(gr, c.Dynamic, c.Tekton.Discovery(), ns, opts)
         if err != nil </span><span class="cov0" title="0">{
-                fmt.Fprintf(os.Stderr, "Failed to list objects from %s namespace \n", ns)
                 return err
         }</span>
 
@@ -7384,7 +7381,7 @@ func Sign(o metav1.Object, keyfile, kmsKey, targetFile string) error <span class
         }</span>
 
         // save signed file
-        <span class="cov8" title="1">f, err := os.OpenFile(targetFile, os.O_WRONLY|os.O_CREATE, 0600)
+        <span class="cov8" title="1">f, err := os.OpenFile(targetFile, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
         if err != nil </span><span class="cov0" title="0">{
                 return fmt.Errorf("error opening output file: %v", err)
         }</span>
