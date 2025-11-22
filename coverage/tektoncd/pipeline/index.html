@@ -383,7 +383,7 @@
 				
 				<option value="file163">github.com/tektoncd/pipeline/pkg/pod/creds_init.go (94.9%)</option>
 				
-				<option value="file164">github.com/tektoncd/pipeline/pkg/pod/entrypoint.go (93.5%)</option>
+				<option value="file164">github.com/tektoncd/pipeline/pkg/pod/entrypoint.go (93.2%)</option>
 				
 				<option value="file165">github.com/tektoncd/pipeline/pkg/pod/entrypoint_lookup.go (86.4%)</option>
 				
@@ -445,7 +445,7 @@
 				
 				<option value="file194">github.com/tektoncd/pipeline/pkg/reconciler/pipelinerun/resources/pipelinerunstate.go (97.3%)</option>
 				
-				<option value="file195">github.com/tektoncd/pipeline/pkg/reconciler/pipelinerun/resources/resultrefresolution.go (99.2%)</option>
+				<option value="file195">github.com/tektoncd/pipeline/pkg/reconciler/pipelinerun/resources/resultrefresolution.go (98.4%)</option>
 				
 				<option value="file196">github.com/tektoncd/pipeline/pkg/reconciler/pipelinerun/resources/validate_dependencies.go (100.0%)</option>
 				
@@ -30520,6 +30520,43 @@ func init() <span class="cov8" title="1">{
         }</span>
 }
 
+// buildSidecarStopPatch creates a JSON Patch to replace sidecar container images with nop image
+func buildSidecarStopPatch(pod *corev1.Pod, nopImage string, ctx context.Context) ([]byte, error) <span class="cov8" title="1">{
+        var patchOps []jsonpatch.JsonPatchOperation
+
+        // Iterate over container statuses to find running sidecars
+        for _, s := range pod.Status.ContainerStatuses </span><span class="cov8" title="1">{
+                // If the results-from is set to sidecar logs,
+                // a sidecar container with name `sidecar-log-results` is injected by the reconciler.
+                // Do not kill this sidecar. Let it exit gracefully.
+                if config.FromContextOrDefaults(ctx).FeatureFlags.ResultExtractionMethod == config.ResultExtractionMethodSidecarLogs &amp;&amp; s.Name == pipeline.ReservedResultsSidecarContainerName </span><span class="cov8" title="1">{
+                        continue</span>
+                }
+                // Stop any running container that isn't a step.
+                // An injected sidecar container might not have the
+                // "sidecar-" prefix, so we can't just look for that prefix.
+                <span class="cov8" title="1">if !IsContainerStep(s.Name) &amp;&amp; s.State.Running != nil </span><span class="cov8" title="1">{
+                        // Find the corresponding container in the spec by name to get the correct index
+                        for i, c := range pod.Spec.Containers </span><span class="cov8" title="1">{
+                                if c.Name == s.Name &amp;&amp; c.Image != nopImage </span><span class="cov8" title="1">{
+                                        patchOps = append(patchOps, jsonpatch.JsonPatchOperation{
+                                                Operation: "replace",
+                                                Path:      fmt.Sprintf("/spec/containers/%d/image", i),
+                                                Value:     nopImage,
+                                        })
+                                        break</span>
+                                }
+                        }
+                }
+        }
+
+        <span class="cov8" title="1">if len(patchOps) == 0 </span><span class="cov8" title="1">{
+                return nil, nil
+        }</span>
+
+        <span class="cov8" title="1">return json.Marshal(patchOps)</span>
+}
+
 // CancelPod cancels the pod
 func CancelPod(ctx context.Context, kubeClient kubernetes.Interface, namespace, podName string) error <span class="cov8" title="1">{
         // PATCH the Pod's annotations to replace the cancel annotation with the
@@ -30545,7 +30582,7 @@ func UpdateReady(ctx context.Context, kubeclient kubernetes.Interface, pod corev
 // StopSidecars updates sidecar containers in the Pod to a nop image, which
 // exits successfully immediately.
 func StopSidecars(ctx context.Context, nopImage string, kubeclient kubernetes.Interface, namespace, name string) (*corev1.Pod, error) <span class="cov8" title="1">{
-        newPod, err := kubeclient.CoreV1().Pods(namespace).Get(ctx, name, metav1.GetOptions{})
+        pod, err := kubeclient.CoreV1().Pods(namespace).Get(ctx, name, metav1.GetOptions{})
         if k8serrors.IsNotFound(err) </span><span class="cov0" title="0">{
                 // return NotFound as-is, since the K8s error checks don't handle wrapping.
                 return nil, err
@@ -30553,35 +30590,29 @@ func StopSidecars(ctx context.Context, nopImage string, kubeclient kubernetes.In
                 return nil, fmt.Errorf("error getting Pod %q when stopping sidecars: %w", name, err)
         }</span>
 
-        <span class="cov8" title="1">updated := false
-        if newPod.Status.Phase == corev1.PodRunning </span><span class="cov8" title="1">{
-                for _, s := range newPod.Status.ContainerStatuses </span><span class="cov8" title="1">{
-                        // If the results-from is set to sidecar logs,
-                        // a sidecar container with name `sidecar-log-results` is injected by the reconiler.
-                        // Do not kill this sidecar. Let it exit gracefully.
-                        if config.FromContextOrDefaults(ctx).FeatureFlags.ResultExtractionMethod == config.ResultExtractionMethodSidecarLogs &amp;&amp; s.Name == pipeline.ReservedResultsSidecarContainerName </span><span class="cov8" title="1">{
-                                continue</span>
-                        }
-                        // Stop any running container that isn't a step.
-                        // An injected sidecar container might not have the
-                        // "sidecar-" prefix, so we can't just look for that
-                        // prefix.
-                        <span class="cov8" title="1">if !IsContainerStep(s.Name) &amp;&amp; s.State.Running != nil </span><span class="cov8" title="1">{
-                                for j, c := range newPod.Spec.Containers </span><span class="cov8" title="1">{
-                                        if c.Name == s.Name &amp;&amp; c.Image != nopImage </span><span class="cov8" title="1">{
-                                                updated = true
-                                                newPod.Spec.Containers[j].Image = nopImage
-                                        }</span>
-                                }
-                        }
-                }
-        }
-        <span class="cov8" title="1">if updated </span><span class="cov8" title="1">{
-                if newPod, err = kubeclient.CoreV1().Pods(newPod.Namespace).Update(ctx, newPod, metav1.UpdateOptions{}); err != nil </span><span class="cov0" title="0">{
-                        return nil, fmt.Errorf("error stopping sidecars of Pod %q: %w", name, err)
-                }</span>
-        }
-        <span class="cov8" title="1">return newPod, nil</span>
+        // Only attempt to stop sidecars if pod is running
+        <span class="cov8" title="1">if pod.Status.Phase != corev1.PodRunning </span><span class="cov8" title="1">{
+                return pod, nil
+        }</span>
+
+        // Build JSON Patch operations to replace sidecar images
+        <span class="cov8" title="1">patchBytes, err := buildSidecarStopPatch(pod, nopImage, ctx)
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, fmt.Errorf("error building patch for stopping sidecars of Pod %q: %w", name, err)
+        }</span>
+
+        // If no sidecars need to be stopped, return early
+        <span class="cov8" title="1">if patchBytes == nil </span><span class="cov8" title="1">{
+                return pod, nil
+        }</span>
+
+        // PATCH the Pod's container images to stop sidecars, using the same pattern as UpdateReady and CancelPod
+        <span class="cov8" title="1">patchedPod, err := kubeclient.CoreV1().Pods(namespace).Patch(ctx, name, types.JSONPatchType, patchBytes, metav1.PatchOptions{})
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, fmt.Errorf("error stopping sidecars of Pod %q: %w", name, err)
+        }</span>
+
+        <span class="cov8" title="1">return patchedPod, nil</span>
 }
 
 // IsSidecarStatusRunning determines if any SidecarStatus on a TaskRun
@@ -40382,7 +40413,7 @@ func removeDup(refs ResolvedResultRefs) ResolvedResultRefs <span class="cov8" ti
                 order = append(order, key)
         }</span>
         <span class="cov8" title="1">sort.Slice(order, func(i, j int) bool </span><span class="cov8" title="1">{
-                if order[i].PipelineTask &gt; order[j].PipelineTask </span><span class="cov8" title="1">{
+                if order[i].PipelineTask &gt; order[j].PipelineTask </span><span class="cov0" title="0">{
                         return false
                 }</span>
                 <span class="cov8" title="1">if order[i].Result &gt; order[j].Result </span><span class="cov0" title="0">{
