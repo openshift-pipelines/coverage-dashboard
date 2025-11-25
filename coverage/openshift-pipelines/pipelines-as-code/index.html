@@ -65,7 +65,7 @@
 				
 				<option value="file4">github.com/openshift-pipelines/pipelines-as-code/pkg/adapter/incoming.go (92.9%)</option>
 				
-				<option value="file5">github.com/openshift-pipelines/pipelines-as-code/pkg/adapter/sinker.go (36.4%)</option>
+				<option value="file5">github.com/openshift-pipelines/pipelines-as-code/pkg/adapter/sinker.go (30.8%)</option>
 				
 				<option value="file6">github.com/openshift-pipelines/pipelines-as-code/pkg/adapter/tls.go (92.3%)</option>
 				
@@ -293,7 +293,7 @@
 				
 				<option value="file118">github.com/openshift-pipelines/pipelines-as-code/pkg/provider/github/status.go (68.7%)</option>
 				
-				<option value="file119">github.com/openshift-pipelines/pipelines-as-code/pkg/provider/gitlab/acl.go (100.0%)</option>
+				<option value="file119">github.com/openshift-pipelines/pipelines-as-code/pkg/provider/gitlab/acl.go (42.9%)</option>
 				
 				<option value="file120">github.com/openshift-pipelines/pipelines-as-code/pkg/provider/gitlab/detect.go (90.0%)</option>
 				
@@ -1113,6 +1113,10 @@ func (s *sinker) processEventPayload(ctx context.Context, request *http.Request)
                 s.logger.Errorf("failed to parse event: %v", err)
                 return err
         }</span>
+        // If ParsePayload returned nil event (intentional skip), exit early
+        <span class="cov0" title="0">if s.event == nil </span><span class="cov0" title="0">{
+                return nil
+        }</span>
 
         // Enhanced structured logging with source repository context for operators
         <span class="cov0" title="0">logFields := []interface{}{
@@ -1149,6 +1153,9 @@ func (s *sinker) processEvent(ctx context.Context, request *http.Request) error 
         } else<span class="cov8" title="1"> {
                 if err := s.processEventPayload(ctx, request); err != nil </span><span class="cov8" title="1">{
                         return err
+                }</span>
+                <span class="cov0" title="0">if s.event == nil </span><span class="cov0" title="0">{
+                        return nil
                 }</span>
         }
 
@@ -15863,6 +15870,10 @@ func (v *Provider) ParsePayload(ctx context.Context, run *params.Run, request *h
                 return nil, err
         }</span>
 
+        <span class="cov8" title="1">if processedEvent == nil </span><span class="cov8" title="1">{
+                return nil, nil
+        }</span>
+
         <span class="cov8" title="1">processedEvent.Event = eventInt
         processedEvent.InstallationID = installationIDFrompayload
         processedEvent.GHEURL = event.Provider.URL
@@ -16044,7 +16055,7 @@ func (v *Provider) processEvent(ctx context.Context, event *info.Event, eventInt
                         // If the commit is part of a PR, skip processing the push event
                         if isPartOfPR </span><span class="cov8" title="1">{
                                 v.Logger.Infof("Skipping push event for commit %s as it belongs to pull request #%d", sha, prNumber)
-                                return nil, fmt.Errorf("commit %s is part of pull request #%d, skipping push event", sha, prNumber)
+                                return nil, nil
                         }</span>
                 }
 
@@ -17237,22 +17248,38 @@ func (v *Provider) checkMembership(ctx context.Context, event *info.Event, useri
 }
 
 func (v *Provider) checkOkToTestCommentFromApprovedMember(ctx context.Context, event *info.Event, page int) (bool, error) <span class="cov8" title="1">{
-        var nextPage int
+        switch gitEvent := event.Event.(type) </span>{
+        case *gitlab.MergeEvent:<span class="cov0" title="0">
+                if !v.pacInfo.RememberOKToTest </span><span class="cov0" title="0">{
+                        v.Logger.Debug("RememberOKToTest is disabled, skipping MergeRequest notes check as it is not needed")
+                        return false, nil
+                }</span>
+        case *gitlab.MergeCommentEvent:<span class="cov0" title="0">
+                if !v.pacInfo.RememberOKToTest </span><span class="cov0" title="0">{
+                        v.Logger.Debug("Event is a MergeCommentEvent and RememberOKToTest is disabled, checking current comment only")
+                        return v.aclAllowedOkToTestCurrentComment(ctx, event, gitEvent.ObjectAttributes.ID)
+                }</span>
+        default:<span class="cov8" title="1">
+                v.Logger.Debug("Event is not a MergeEvent or MergeCommentEvent, skipping merge request notes check")
+                return false, nil</span>
+        }
+
+        <span class="cov0" title="0">var nextPage int
         opt := &amp;gitlab.ListMergeRequestDiscussionsOptions{Page: page}
         discussions, resp, err := v.Client().Discussions.ListMergeRequestDiscussions(v.targetProjectID, event.PullRequestNumber, opt)
-        if err != nil || len(discussions) == 0 </span><span class="cov8" title="1">{
+        if err != nil || len(discussions) == 0 </span><span class="cov0" title="0">{
                 return false, err
         }</span>
-        <span class="cov8" title="1">if resp.NextPage != 0 </span><span class="cov8" title="1">{
+        <span class="cov0" title="0">if resp.NextPage != 0 </span><span class="cov0" title="0">{
                 nextPage = resp.NextPage
         }</span>
 
-        <span class="cov8" title="1">for _, discussion := range discussions </span><span class="cov8" title="1">{
+        <span class="cov0" title="0">for _, discussion := range discussions </span><span class="cov0" title="0">{
                 // Iterate through every note in the discussion thread and evaluate them.
                 // If a note contains an OK-to-test command, verify the commenter's permission
                 // (either project membership or presence in OWNERS/OWNERS_ALIASES).
-                for _, note := range discussion.Notes </span><span class="cov8" title="1">{
-                        if acl.MatchRegexp(acl.OKToTestCommentRegexp, note.Body) </span><span class="cov8" title="1">{
+                for _, note := range discussion.Notes </span><span class="cov0" title="0">{
+                        if acl.MatchRegexp(acl.OKToTestCommentRegexp, note.Body) </span><span class="cov0" title="0">{
                                 commenterEvent := info.NewEvent()
                                 commenterEvent.Event = event.Event
                                 commenterEvent.Sender = note.Author.Username
@@ -17260,18 +17287,38 @@ func (v *Provider) checkOkToTestCommentFromApprovedMember(ctx context.Context, e
                                 commenterEvent.HeadBranch = event.HeadBranch
                                 commenterEvent.DefaultBranch = event.DefaultBranch
                                 // We could add caching for membership checks in the future.
-                                if v.checkMembership(ctx, commenterEvent, note.Author.ID) </span><span class="cov8" title="1">{
+                                if v.checkMembership(ctx, commenterEvent, note.Author.ID) </span><span class="cov0" title="0">{
                                         return true, nil
                                 }</span>
                         }
                 }
         }
 
-        <span class="cov8" title="1">if nextPage != 0 </span><span class="cov8" title="1">{
+        <span class="cov0" title="0">if nextPage != 0 </span><span class="cov0" title="0">{
                 return v.checkOkToTestCommentFromApprovedMember(ctx, event, nextPage)
         }</span>
 
-        <span class="cov8" title="1">return false, nil</span>
+        <span class="cov0" title="0">return false, nil</span>
+}
+
+func (v *Provider) aclAllowedOkToTestCurrentComment(ctx context.Context, event *info.Event, commentID int) (bool, error) <span class="cov0" title="0">{
+        comment, _, err := v.Client().Notes.GetMergeRequestNote(v.targetProjectID, event.PullRequestNumber, commentID)
+        if err != nil </span><span class="cov0" title="0">{
+                return false, err
+        }</span>
+
+        <span class="cov0" title="0">if acl.MatchRegexp(acl.OKToTestCommentRegexp, comment.Body) </span><span class="cov0" title="0">{
+                commenterEvent := info.NewEvent()
+                commenterEvent.Event = event.Event
+                commenterEvent.Sender = comment.Author.Username
+                commenterEvent.BaseBranch = event.BaseBranch
+                commenterEvent.HeadBranch = event.HeadBranch
+                commenterEvent.DefaultBranch = event.DefaultBranch
+                if v.checkMembership(ctx, commenterEvent, comment.Author.ID) </span><span class="cov0" title="0">{
+                        return true, nil
+                }</span>
+        }
+        <span class="cov0" title="0">return false, nil</span>
 }
 
 func (v *Provider) IsAllowed(ctx context.Context, event *info.Event) (bool, error) <span class="cov8" title="1">{
