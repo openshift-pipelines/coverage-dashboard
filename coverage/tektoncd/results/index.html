@@ -223,7 +223,7 @@
 				
 				<option value="file83">github.com/tektoncd/results/pkg/retention/config.go (0.0%)</option>
 				
-				<option value="file84">github.com/tektoncd/results/pkg/retention/job.go (56.0%)</option>
+				<option value="file84">github.com/tektoncd/results/pkg/retention/job.go (62.3%)</option>
 				
 				<option value="file85">github.com/tektoncd/results/pkg/taskrunmetrics/metrics.go (73.0%)</option>
 				
@@ -11052,8 +11052,18 @@ func (a *Agent) job() <span class="cov0" title="0">{
         a.Logger.Infof("retention job finished at: %s", time.Now().String())</span>
 }
 
-func (a *Agent) cleanupResults(caseStatement, recordType string) <span class="cov0" title="0">{
-        deleteQuery := fmt.Sprintf(`
+func (a *Agent) cleanupResults(caseStatement, recordType string) <span class="cov8" title="1">{
+        var additionalFilter string
+        if recordType == "tekton.dev/v1.TaskRun" </span><span class="cov8" title="1">{
+                additionalFilter = `AND NOT EXISTS (
+                        SELECT 1 FROM records pr
+                        WHERE pr.type = 'tekton.dev/v1.PipelineRun'
+                          AND pr.parent = r.parent
+                          AND pr.result_id = r.result_id
+                )`
+        }</span>
+
+        <span class="cov8" title="1">deleteQuery := fmt.Sprintf(`
         DELETE FROM results
         WHERE id IN (
             SELECT result_id FROM (
@@ -11062,11 +11072,11 @@ func (a *Agent) cleanupResults(caseStatement, recordType string) <span class="co
                     r.updated_time,
                     %s AS expiration_time
                 FROM records r
-                WHERE r.type = '%s'
+                WHERE r.type = '%s' %s
             ) AS subquery
             WHERE updated_time &lt; expiration_time
         )
-    `, caseStatement, recordType)
+    `, caseStatement, recordType, additionalFilter)
 
         if err := errors.Wrap(a.db.Exec(deleteQuery).Error); err != nil </span><span class="cov0" title="0">{
                 a.Logger.Errorf("failed to delete results for record type %s: %s", recordType, err.Error())
