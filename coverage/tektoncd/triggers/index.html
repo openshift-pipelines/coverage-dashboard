@@ -179,7 +179,7 @@
 				
 				<option value="file61">github.com/tektoncd/triggers/pkg/interceptors/secret_getter.go (84.6%)</option>
 				
-				<option value="file62">github.com/tektoncd/triggers/pkg/interceptors/server/server.go (81.5%)</option>
+				<option value="file62">github.com/tektoncd/triggers/pkg/interceptors/server/server.go (82.2%)</option>
 				
 				<option value="file63">github.com/tektoncd/triggers/pkg/interceptors/slack/slack.go (80.0%)</option>
 				
@@ -8332,11 +8332,11 @@ func UpdateCACertToClusterInterceptorCRD(ctx context.Context, service *Server, t
                 defer ticker.Stop()
                 for </span><span class="cov8" title="1">{
                         select </span>{
-                        case &lt;-done:<span class="cov8" title="1">
+                        case &lt;-done:<span class="cov0" title="0">
                                 return</span>
                         case &lt;-ticker.C:<span class="cov8" title="1">
                                 secret, err := secretInformer.Get(ctx).Lister().Secrets(system.Namespace()).Get(interceptorSecretName)
-                                if err != nil </span><span class="cov0" title="0">{
+                                if err != nil </span><span class="cov8" title="1">{
                                         logger.Errorf("failed to fetch secret %v", err)
                                         return
                                 }</span>
