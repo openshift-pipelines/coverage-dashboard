@@ -471,7 +471,7 @@
 				
 				<option value="file207">github.com/tektoncd/pipeline/pkg/reconciler/taskrun/resources/validate_params.go (97.2%)</option>
 				
-				<option value="file208">github.com/tektoncd/pipeline/pkg/reconciler/taskrun/taskrun.go (86.9%)</option>
+				<option value="file208">github.com/tektoncd/pipeline/pkg/reconciler/taskrun/taskrun.go (86.5%)</option>
 				
 				<option value="file209">github.com/tektoncd/pipeline/pkg/reconciler/taskrun/tracing.go (90.9%)</option>
 				
@@ -43460,10 +43460,15 @@ func (c *Reconciler) ReconcileKind(ctx context.Context, tr *v1.TaskRun) pkgrecon
         // Check if the TaskRun has timed out; if it is, this will set its status
         // accordingly.
         <span class="cov8" title="1">if tr.HasTimedOut(ctx, c.Clock) </span><span class="cov8" title="1">{
-                message := fmt.Sprintf("TaskRun %q failed to finish within %q", tr.Name, tr.GetTimeout(ctx))
+                // Before failing the TaskRun, ensure step statuses are populated from the pod
+                // This prevents a race condition where the timeout occurs before pod status is fetched
+                if err := c.updateStepStatusesFromPod(ctx, tr); err != nil </span><span class="cov0" title="0">{
+                        logger.Warnf("Failed to update step statuses from pod before timeout: %v", err)
+                }</span>
+                <span class="cov8" title="1">message := fmt.Sprintf("TaskRun %q failed to finish within %q", tr.Name, tr.GetTimeout(ctx))
                 err := c.failTaskRun(ctx, tr, v1.TaskRunReasonTimedOut, message)
-                return c.finishReconcileUpdateEmitEvents(ctx, tr, before, err)
-        }</span>
+                return c.finishReconcileUpdateEmitEvents(ctx, tr, before, err)</span>
+        }
 
         // Check for Pod Failures
         <span class="cov8" title="1">if failed, reason, message := c.checkPodFailed(ctx, tr); failed </span><span class="cov8" title="1">{
@@ -44095,6 +44100,37 @@ func (c *Reconciler) failTaskRun(ctx context.Context, tr *v1.TaskRun, reason v1.
         }</span>
 
         <span class="cov8" title="1">return nil</span>
+}
+
+// updateStepStatusesFromPod fetches the pod and updates step statuses in the TaskRun
+// This is called before failing a TaskRun to ensure step statuses are populated
+func (c *Reconciler) updateStepStatusesFromPod(ctx context.Context, tr *v1.TaskRun) error <span class="cov8" title="1">{
+        logger := logging.FromContext(ctx)
+
+        // If there's no pod yet, nothing to update
+        if tr.Status.PodName == "" </span><span class="cov8" title="1">{
+                return nil
+        }</span>
+
+        // Fetch the pod
+        <span class="cov8" title="1">pod, err := c.podLister.Pods(tr.Namespace).Get(tr.Status.PodName)
+        if k8serrors.IsNotFound(err) </span><span class="cov0" title="0">{
+                // Pod doesn't exist yet, nothing to update
+                return nil
+        }</span> else<span class="cov8" title="1"> if err != nil </span><span class="cov0" title="0">{
+                return err
+        }</span>
+
+        // Update step statuses from pod using the existing MakeTaskRunStatus function
+        // This ensures consistency with the normal reconciliation path
+        <span class="cov8" title="1">status, err := podconvert.MakeTaskRunStatus(ctx, logger, *tr, pod, c.KubeClientSet, tr.Status.TaskSpec)
+        if err != nil </span><span class="cov0" title="0">{
+                return err
+        }</span>
+
+        // Only update the Steps field to avoid overwriting other status fields
+        <span class="cov8" title="1">tr.Status.Steps = status.Steps
+        return nil</span>
 }
 
 // terminateStepsInPod updates step states for TaskRun on TaskRun object since pod has been deleted for cancel or timeout

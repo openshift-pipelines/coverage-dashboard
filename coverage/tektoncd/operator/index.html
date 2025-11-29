@@ -179,13 +179,13 @@
 				
 				<option value="file61">github.com/tektoncd/operator/pkg/reconciler/common/testing/util.go (0.0%)</option>
 				
-				<option value="file62">github.com/tektoncd/operator/pkg/reconciler/common/transformer_additional_options.go (84.8%)</option>
+				<option value="file62">github.com/tektoncd/operator/pkg/reconciler/common/transformer_additional_options.go (84.9%)</option>
 				
 				<option value="file63">github.com/tektoncd/operator/pkg/reconciler/common/transformer_inject_envvar.go (73.3%)</option>
 				
 				<option value="file64">github.com/tektoncd/operator/pkg/reconciler/common/transformer_injectlabel.go (72.4%)</option>
 				
-				<option value="file65">github.com/tektoncd/operator/pkg/reconciler/common/transformers.go (72.1%)</option>
+				<option value="file65">github.com/tektoncd/operator/pkg/reconciler/common/transformers.go (72.9%)</option>
 				
 				<option value="file66">github.com/tektoncd/operator/pkg/reconciler/common/unstructured.go (100.0%)</option>
 				
@@ -389,7 +389,7 @@
 				
 				<option value="file166">github.com/tektoncd/operator/pkg/reconciler/openshift/tektonhub/controller.go (0.0%)</option>
 				
-				<option value="file167">github.com/tektoncd/operator/pkg/reconciler/openshift/tektonhub/extension.go (14.7%)</option>
+				<option value="file167">github.com/tektoncd/operator/pkg/reconciler/openshift/tektonhub/extension.go (24.1%)</option>
 				
 				<option value="file168">github.com/tektoncd/operator/pkg/reconciler/openshift/tektonpipeline/controller.go (0.0%)</option>
 				
@@ -421,7 +421,7 @@
 				
 				<option value="file182">github.com/tektoncd/operator/pkg/reconciler/proxy/proxy.go (4.1%)</option>
 				
-				<option value="file183">github.com/tektoncd/operator/pkg/reconciler/shared/hash/hash.go (76.9%)</option>
+				<option value="file183">github.com/tektoncd/operator/pkg/reconciler/shared/hash/hash.go (71.4%)</option>
 				
 				<option value="file184">github.com/tektoncd/operator/pkg/reconciler/shared/tektonconfig/chain/chain.go (71.4%)</option>
 				
@@ -8778,11 +8778,20 @@ func (ot *OptionsTransformer) updateDeploymentHashValue(u *unstructured.Unstruct
         }</span>
         <span class="cov8" title="1">deployment.Spec.Template.Labels[v1alpha1.DeploymentSpecHashValueLabelKey] = ""
 
-        // label value max limit is 63 chars, sha256 hash produces 64 chars
-        // use md5 hash which is 16 chars
-        hashValue, err := hash.ComputeMd5(deployment.Spec)
+        // Compute a stable hash of the deployment spec and set it in a pod-template label
+        // to force a rollout on spec changes.
+        //
+        // Label values are limited to 63 characters; SHA-256 hex output is 64 chars.
+        // Use SHA-256 for FIPS compliance and truncate the hex string to fit as a label.
+        fullHash, err := hash.Compute(deployment.Spec)
         if err != nil </span><span class="cov0" title="0">{
                 return err
+        }</span>
+        // Use a safe truncated prefix for the label value
+        <span class="cov8" title="1">const hashLabelLen = 32
+        hashValue := fullHash
+        if len(hashValue) &gt; hashLabelLen </span><span class="cov8" title="1">{
+                hashValue = hashValue[:hashLabelLen]
         }</span>
 
         // update hash value
@@ -9351,6 +9360,7 @@ func transformers(ctx context.Context, obj v1alpha1.TektonComponent) []mf.Transf
                 injectNamespaceCRDWebhookClientConfig(obj.GetSpec().GetTargetNamespace()),
                 injectNamespaceCRClusterInterceptorClientConfig(obj.GetSpec().GetTargetNamespace()),
                 injectNamespaceClusterRole(obj.GetSpec().GetTargetNamespace()),
+                ReplaceNamespaceInWebhookNamespaceSelector(obj.GetSpec().GetTargetNamespace()),
                 AddDeploymentRestrictedPSA(),
         }
 }</span>
@@ -10520,6 +10530,80 @@ func getSortedKeys(input map[string]interface{}) []string <span class="cov8" tit
         }</span>
         <span class="cov8" title="1">sort.Strings(keys)
         return keys</span>
+}
+
+// replaces the namespace in ValidatingWebhookConfiguration namespaceSelector
+func ReplaceNamespaceInWebhookNamespaceSelector(targetNamespace string) mf.Transformer <span class="cov8" title="1">{
+        return func(u *unstructured.Unstructured) error </span><span class="cov8" title="1">{
+                if !strings.EqualFold(u.GetKind(), "ValidatingWebhookConfiguration") </span><span class="cov8" title="1">{
+                        return nil
+                }</span>
+                // Accept either spec.webhooks (some older patterns) or top-level webhooks (current API structure).
+                <span class="cov8" title="1">webhooks, foundSpec, errSpec := unstructured.NestedSlice(u.Object, "spec", "webhooks")
+                pathIsSpec := true
+                if errSpec != nil || !foundSpec </span><span class="cov8" title="1">{
+                        // Fallback to top-level
+                        webhooksTop, foundTop, errTop := unstructured.NestedSlice(u.Object, "webhooks")
+                        if errTop != nil || !foundTop </span><span class="cov0" title="0">{
+                                // Nothing to transform
+                                return nil
+                        }</span>
+                        <span class="cov8" title="1">webhooks = webhooksTop
+                        pathIsSpec = false</span>
+                }
+                <span class="cov8" title="1">changed := false
+                for i := range webhooks </span><span class="cov8" title="1">{
+                        wh, ok := webhooks[i].(map[string]interface{})
+                        if !ok </span><span class="cov0" title="0">{
+                                continue</span>
+                        }
+                        <span class="cov8" title="1">nsSel, okNs := wh["namespaceSelector"].(map[string]interface{})
+                        if !okNs </span><span class="cov0" title="0">{
+                                continue</span>
+                        }
+                        <span class="cov8" title="1">matchExprs, okExpr := nsSel["matchExpressions"].([]interface{})
+                        if !okExpr </span><span class="cov0" title="0">{
+                                continue</span>
+                        }
+                        <span class="cov8" title="1">for j := range matchExprs </span><span class="cov8" title="1">{
+                                expr, ok := matchExprs[j].(map[string]interface{})
+                                if !ok </span><span class="cov0" title="0">{
+                                        continue</span>
+                                }
+                                <span class="cov8" title="1">values, okVals := expr["values"].([]interface{})
+                                if !okVals || len(values) == 0 </span><span class="cov0" title="0">{
+                                        continue</span>
+                                }
+                                <span class="cov8" title="1">for k := range values </span><span class="cov8" title="1">{
+                                        valStr, ok := values[k].(string)
+                                        if !ok || targetNamespace == "" </span><span class="cov0" title="0">{
+                                                continue</span>
+                                        }
+                                        <span class="cov8" title="1">if strings.Contains(valStr, DefaultTargetNamespace) </span><span class="cov8" title="1">{
+                                                newVal := strings.ReplaceAll(valStr, DefaultTargetNamespace, targetNamespace)
+                                                if newVal != valStr </span><span class="cov8" title="1">{
+                                                        values[k] = newVal
+                                                        changed = true
+                                                }</span>
+                                        }
+                                }
+                                <span class="cov8" title="1">expr["values"] = values
+                                matchExprs[j] = expr</span>
+                        }
+                        <span class="cov8" title="1">nsSel["matchExpressions"] = matchExprs
+                        wh["namespaceSelector"] = nsSel
+                        webhooks[i] = wh</span>
+                }
+                <span class="cov8" title="1">if changed </span><span class="cov8" title="1">{
+                        if pathIsSpec </span><span class="cov0" title="0">{
+                                _ = unstructured.SetNestedSlice(u.Object, webhooks, "spec", "webhooks")
+                        }</span> else<span class="cov8" title="1"> {
+                                // Top-level assignment
+                                u.Object["webhooks"] = webhooks
+                        }</span>
+                }
+                <span class="cov8" title="1">return nil</span>
+        }
 }
 </pre>
 		
@@ -27079,7 +27163,6 @@ import (
         routev1 "github.com/openshift/api/route/v1"
         "github.com/openshift/client-go/route/clientset/versioned/scheme"
         "github.com/tektoncd/operator/pkg/apis/operator/v1alpha1"
-        "github.com/tektoncd/operator/pkg/client/clientset/versioned"
         clientset "github.com/tektoncd/operator/pkg/client/clientset/versioned"
         operatorclient "github.com/tektoncd/operator/pkg/client/injection/client"
         "github.com/tektoncd/operator/pkg/reconciler/common"
@@ -27098,11 +27181,12 @@ import (
 )
 
 const (
-        hubprefix                  string = "tekton-hub"
-        tektonHubAPIResourceKey    string = "api"
-        tektonHubUiResourceKey     string = "ui"
-        CreatedByValue             string = "TektonHub"
-        ConsoleHubLinkInstallerSet        = "ConsoleHubLink"
+        hubprefix                    string = "tekton-hub"
+        tektonHubAPIResourceKey      string = "api"
+        tektonHubUiResourceKey       string = "ui"
+        CreatedByValue               string = "TektonHub"
+        ConsoleHubLinkInstallerSet          = "ConsoleHubLink"
+        postgreSQLConfigMapDirectory        = "static/tekton-hub/postgresql-cm"
 )
 
 var replaceVal = map[string]string{
@@ -27138,7 +27222,7 @@ func OpenShiftExtension(ctx context.Context) common.Extension <span class="cov0"
 }
 
 type openshiftExtension struct {
-        operatorClientSet versioned.Interface
+        operatorClientSet clientset.Interface
         kubeClientSet     kubernetes.Interface
         manifest          mf.Manifest
 }
@@ -27146,6 +27230,7 @@ type openshiftExtension struct {
 func (oe openshiftExtension) Transformers(comp v1alpha1.TektonComponent) []mf.Transformer <span class="cov0" title="0">{
         return []mf.Transformer{
                 UpdateDbDeployment(),
+                injectPostgresUpgradeSupport(),
                 openshiftCommon.RemoveRunAsUser(),
                 openshiftCommon.RemoveRunAsUserForJob(),
                 openshiftCommon.RemoveFsGroupForDeployment(),
@@ -27164,8 +27249,29 @@ func (oe openshiftExtension) PreReconcile(ctx context.Context, tc v1alpha1.Tekto
                 return err
         }</span>
 
+        // Fetch and append the postgresql config map which has postgresupgrade wrapper script
+        <span class="cov0" title="0">postgresqlCMDir := filepath.Join(common.ComponentBaseDir(), postgreSQLConfigMapDirectory)
+        postgresqlManifest := oe.manifest.Append()
+        if err := common.AppendManifest(&amp;postgresqlManifest, postgresqlCMDir); err != nil </span><span class="cov0" title="0">{
+                return err
+        }</span>
+
+        // Transform and apply the postgresql ConfigMap
+        <span class="cov0" title="0">postgresqlManifest, err := postgresqlManifest.Transform(
+                mf.InjectOwner(th),
+                mf.InjectNamespace(targetNs),
+        )
+        if err != nil </span><span class="cov0" title="0">{
+                logger.Error("failed to transform postgresql configmap manifest")
+                return err
+        }</span>
+        <span class="cov0" title="0">if err := postgresqlManifest.Apply(); err != nil </span><span class="cov0" title="0">{
+                logger.Error("failed to apply postgresql configmap manifest")
+                return err
+        }</span>
+
         <span class="cov0" title="0">apiRouteManifest := manifest.Filter(mf.ByKind("Route"))
-        apiRouteManifest, err := apiRouteManifest.Transform(
+        apiRouteManifest, err = apiRouteManifest.Transform(
                 mf.InjectOwner(th),
                 mf.InjectNamespace(targetNs),
         )
@@ -27495,6 +27601,97 @@ func replaceEnv(envs []corev1.EnvVar) <span class="cov8" title="1">{
                 if ok </span><span class="cov8" title="1">{
                         envs[i].Name = replaceVal[e.Name]
                 }</span>
+                // Update PGDATA value to match the new mount path
+                <span class="cov8" title="1">if e.Name == "PGDATA" </span><span class="cov8" title="1">{
+                        envs[i].Value = "/var/lib/pgsql/data"
+                }</span>
+        }
+}
+
+// injectPostgresUpgradeSupport modifies the postgres container to support automatic
+// upgrade from PostgreSQL 13 to PostgreSQL 15. The wrapper script checks the PG_VERSION
+// file in the data directory and sets POSTGRESQL_UPGRADE=copy if an upgrade is needed,
+// triggering the sclorg container's built-in upgrade mechanism.
+func injectPostgresUpgradeSupport() mf.Transformer <span class="cov8" title="1">{
+        return func(u *unstructured.Unstructured) error </span><span class="cov8" title="1">{
+                // Only apply this transformer to the tekton-hub-db Deployment
+                if u.GetKind() != "Deployment" || u.GetName() != "tekton-hub-db" </span><span class="cov0" title="0">{
+                        return nil
+                }</span>
+
+                <span class="cov8" title="1">d := &amp;appsv1.Deployment{}
+                err := runtime.DefaultUnstructuredConverter.FromUnstructured(u.Object, d)
+                if err != nil </span><span class="cov0" title="0">{
+                        return err
+                }</span>
+
+                // Modify the main postgres container
+                <span class="cov8" title="1">for i, container := range d.Spec.Template.Spec.Containers </span><span class="cov8" title="1">{
+                        if container.Name == "tekton-hub-db" </span><span class="cov8" title="1">{
+                                // Add volume mount for upgrade scripts
+                                vmFound := false
+                                for _, vm := range container.VolumeMounts </span><span class="cov8" title="1">{
+                                        if vm.Name == "upgrade-scripts" </span><span class="cov0" title="0">{
+                                                vmFound = true
+                                                break</span>
+                                        }
+                                }
+                                <span class="cov8" title="1">if !vmFound </span><span class="cov8" title="1">{
+                                        d.Spec.Template.Spec.Containers[i].VolumeMounts = append(
+                                                container.VolumeMounts,
+                                                corev1.VolumeMount{
+                                                        Name:      "upgrade-scripts",
+                                                        MountPath: "/upgrade-scripts",
+                                                },
+                                        )
+                                }</span>
+
+                                // Change the command to use the wrapper script
+                                <span class="cov8" title="1">d.Spec.Template.Spec.Containers[i].Command = []string{
+                                        "/bin/bash",
+                                        "/upgrade-scripts/postgres-wrapper.sh",
+                                }</span>
+                        }
+                }
+
+                // Add volume for upgrade scripts ConfigMap
+                <span class="cov8" title="1">scriptsVolume := corev1.Volume{
+                        Name: "upgrade-scripts",
+                        VolumeSource: corev1.VolumeSource{
+                                ConfigMap: &amp;corev1.ConfigMapVolumeSource{
+                                        LocalObjectReference: corev1.LocalObjectReference{
+                                                Name: "tekton-hub-postgres-upgrade-scripts",
+                                        },
+                                        DefaultMode: func() *int32 </span><span class="cov8" title="1">{
+                                                mode := int32(0755)
+                                                return &amp;mode
+                                        }</span>(),
+                                },
+                        },
+                }
+
+                <span class="cov8" title="1">volumeFound := false
+                for i, vol := range d.Spec.Template.Spec.Volumes </span><span class="cov8" title="1">{
+                        if vol.Name == "upgrade-scripts" </span><span class="cov0" title="0">{
+                                d.Spec.Template.Spec.Volumes[i] = scriptsVolume
+                                volumeFound = true
+                                break</span>
+                        }
+                }
+                <span class="cov8" title="1">if !volumeFound </span><span class="cov8" title="1">{
+                        d.Spec.Template.Spec.Volumes = append(
+                                d.Spec.Template.Spec.Volumes,
+                                scriptsVolume,
+                        )
+                }</span>
+
+                // Convert back to unstructured
+                <span class="cov8" title="1">uObj, err := runtime.DefaultUnstructuredConverter.ToUnstructured(d)
+                if err != nil </span><span class="cov0" title="0">{
+                        return err
+                }</span>
+                <span class="cov8" title="1">u.SetUnstructuredContent(uObj)
+                return nil</span>
         }
 }
 </pre>
@@ -29427,7 +29624,6 @@ limitations under the License.
 package hash
 
 import (
-        "crypto/md5"
         "crypto/sha256"
         "encoding/json"
         "fmt"
@@ -29445,18 +29641,6 @@ func Compute(obj interface{}) (string, error) <span class="cov8" title="1">{
         <span class="cov8" title="1">hashSha256 := sha256.New()
         hashSha256.Write(d)
         return fmt.Sprintf("%x", hashSha256.Sum(nil)), nil</span>
-}
-
-// Compute generates an unique hash/string for the object pass to it.
-// with md5
-func ComputeMd5(obj interface{}) (string, error) <span class="cov8" title="1">{
-        d, err := json.Marshal(obj)
-        if err != nil </span><span class="cov0" title="0">{
-                return "", err
-        }</span>
-        <span class="cov8" title="1">hashMd5 := md5.New()
-        hashMd5.Write(d)
-        return fmt.Sprintf("%x", hashMd5.Sum(nil)), nil</span>
 }
 
 // computes has for the given directory, tasks the directory and files recursively
