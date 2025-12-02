@@ -243,7 +243,7 @@
 				
 				<option value="file93">github.com/openshift-pipelines/pipelines-as-code/pkg/pipelineascode/match.go (83.9%)</option>
 				
-				<option value="file94">github.com/openshift-pipelines/pipelines-as-code/pkg/pipelineascode/pipelineascode.go (73.6%)</option>
+				<option value="file94">github.com/openshift-pipelines/pipelines-as-code/pkg/pipelineascode/pipelineascode.go (73.8%)</option>
 				
 				<option value="file95">github.com/openshift-pipelines/pipelines-as-code/pkg/pipelineascode/secret.go (81.8%)</option>
 				
@@ -261,7 +261,7 @@
 				
 				<option value="file102">github.com/openshift-pipelines/pipelines-as-code/pkg/provider/bitbucketdatacenter/acl.go (86.0%)</option>
 				
-				<option value="file103">github.com/openshift-pipelines/pipelines-as-code/pkg/provider/bitbucketdatacenter/bitbucketdatacenter.go (85.9%)</option>
+				<option value="file103">github.com/openshift-pipelines/pipelines-as-code/pkg/provider/bitbucketdatacenter/bitbucketdatacenter.go (86.5%)</option>
 				
 				<option value="file104">github.com/openshift-pipelines/pipelines-as-code/pkg/provider/bitbucketdatacenter/detect.go (92.9%)</option>
 				
@@ -283,7 +283,7 @@
 				
 				<option value="file113">github.com/openshift-pipelines/pipelines-as-code/pkg/provider/github/detect.go (91.7%)</option>
 				
-				<option value="file114">github.com/openshift-pipelines/pipelines-as-code/pkg/provider/github/github.go (88.1%)</option>
+				<option value="file114">github.com/openshift-pipelines/pipelines-as-code/pkg/provider/github/github.go (88.2%)</option>
 				
 				<option value="file115">github.com/openshift-pipelines/pipelines-as-code/pkg/provider/github/parse_payload.go (91.5%)</option>
 				
@@ -299,7 +299,7 @@
 				
 				<option value="file121">github.com/openshift-pipelines/pipelines-as-code/pkg/provider/gitlab/detect.go (90.0%)</option>
 				
-				<option value="file122">github.com/openshift-pipelines/pipelines-as-code/pkg/provider/gitlab/gitlab.go (86.4%)</option>
+				<option value="file122">github.com/openshift-pipelines/pipelines-as-code/pkg/provider/gitlab/gitlab.go (86.9%)</option>
 				
 				<option value="file123">github.com/openshift-pipelines/pipelines-as-code/pkg/provider/gitlab/parse_payload.go (83.4%)</option>
 				
@@ -343,7 +343,7 @@
 				
 				<option value="file143">github.com/openshift-pipelines/pipelines-as-code/pkg/sort/runtime_sort.go (30.2%)</option>
 				
-				<option value="file144">github.com/openshift-pipelines/pipelines-as-code/pkg/sort/task_log_snippets.go (100.0%)</option>
+				<option value="file144">github.com/openshift-pipelines/pipelines-as-code/pkg/sort/task_log_snippets.go (87.5%)</option>
 				
 				<option value="file145">github.com/openshift-pipelines/pipelines-as-code/pkg/sort/task_status.go (88.9%)</option>
 				
@@ -11588,9 +11588,11 @@ func (p *PacRun) startPR(ctx context.Context, match matcher.Match) (*tektonv1.Pi
         <span class="cov8" title="1">if len(patchAnnotations) &gt; 0 || len(patchLabels) &gt; 0 </span><span class="cov8" title="1">{
                 pr, err = action.PatchPipelineRun(ctx, p.logger, whatPatching, p.run.Clients.Tekton, pr, getMergePatch(patchAnnotations, patchLabels))
                 if err != nil </span><span class="cov8" title="1">{
-                        // we still return the created PR with error, and allow caller to decide what to do with the PR, and avoid
-                        // unneeded SIGSEGV's
-                        return pr, fmt.Errorf("cannot patch pipelinerun %s: %w", pr.GetGenerateName(), err)
+                        // if PipelineRun patch is failed then do not return error, just log the error
+                        // because its a false negative and on startPR return a failed check is being created
+                        // due to this.
+                        p.logger.Errorf("cannot patch pipelinerun %s: %w", pr.GetGenerateName(), err)
+                        return pr, nil
                 }</span>
                 <span class="cov8" title="1">currentReason := ""
                 if len(pr.Status.GetConditions()) &gt; 0 </span><span class="cov0" title="0">{
@@ -12782,6 +12784,7 @@ type Provider struct {
         projectKey                string
         repo                      *v1alpha1.Repository
         triggerEvent              string
+        cachedChangedFiles        *changedfiles.ChangedFiles
 }
 
 func (v Provider) Client() *scm.Client <span class="cov8" title="1">{
@@ -13111,13 +13114,28 @@ func (v *Provider) GetConfig() *info.ProviderConfig <span class="cov8" title="1"
         }
 }</span>
 
+// GetFiles gets and caches the list of files changed by a given event.
 func (v *Provider) GetFiles(ctx context.Context, runevent *info.Event) (changedfiles.ChangedFiles, error) <span class="cov8" title="1">{
-        OrgAndRepo := fmt.Sprintf("%s/%s", runevent.Organization, runevent.Repository)
-        if runevent.TriggerTarget == triggertype.PullRequest </span><span class="cov8" title="1">{
+        if v.cachedChangedFiles == nil </span><span class="cov8" title="1">{
+                changes, err := v.fetchChangedFiles(ctx, runevent)
+                if err != nil </span><span class="cov8" title="1">{
+                        return changedfiles.ChangedFiles{}, err
+                }</span>
+                <span class="cov8" title="1">v.cachedChangedFiles = &amp;changes</span>
+        }
+        <span class="cov8" title="1">return *v.cachedChangedFiles, nil</span>
+}
+
+func (v *Provider) fetchChangedFiles(ctx context.Context, runevent *info.Event) (changedfiles.ChangedFiles, error) <span class="cov8" title="1">{
+        changedFiles := changedfiles.ChangedFiles{}
+
+        orgAndRepo := fmt.Sprintf("%s/%s", runevent.Organization, runevent.Repository)
+
+        switch runevent.TriggerTarget </span>{
+        case triggertype.PullRequest:<span class="cov8" title="1">
                 opts := &amp;scm.ListOptions{Page: 1, Size: apiResponseLimit}
-                changedFiles := changedfiles.ChangedFiles{}
                 for </span><span class="cov8" title="1">{
-                        changes, _, err := v.Client().PullRequests.ListChanges(ctx, OrgAndRepo, runevent.PullRequestNumber, opts)
+                        changes, _, err := v.Client().PullRequests.ListChanges(ctx, orgAndRepo, runevent.PullRequestNumber, opts)
                         if err != nil </span><span class="cov8" title="1">{
                                 return changedfiles.ChangedFiles{}, fmt.Errorf("failed to list changes for pull request: %w", err)
                         }</span>
@@ -13148,14 +13166,10 @@ func (v *Provider) GetFiles(ctx context.Context, runevent *info.Event) (changedf
 
                         <span class="cov0" title="0">opts.Page++</span>
                 }
-                <span class="cov8" title="1">return changedFiles, nil</span>
-        }
-
-        <span class="cov8" title="1">if runevent.TriggerTarget == triggertype.Push </span><span class="cov8" title="1">{
+        case triggertype.Push:<span class="cov8" title="1">
                 opts := &amp;scm.ListOptions{Page: 1, Size: apiResponseLimit}
-                changedFiles := changedfiles.ChangedFiles{}
                 for </span><span class="cov8" title="1">{
-                        changes, _, err := v.Client().Git.ListChanges(ctx, OrgAndRepo, runevent.SHA, opts)
+                        changes, _, err := v.Client().Git.ListChanges(ctx, orgAndRepo, runevent.SHA, opts)
                         if err != nil </span><span class="cov8" title="1">{
                                 return changedfiles.ChangedFiles{}, fmt.Errorf("failed to list changes for commit %s: %w", runevent.SHA, err)
                         }</span>
@@ -13182,9 +13196,10 @@ func (v *Provider) GetFiles(ctx context.Context, runevent *info.Event) (changedf
 
                         <span class="cov0" title="0">opts.Page++</span>
                 }
-                <span class="cov8" title="1">return changedFiles, nil</span>
+        default:<span class="cov0" title="0"></span>
+                // No action necessary
         }
-        <span class="cov0" title="0">return changedfiles.ChangedFiles{}, nil</span>
+        <span class="cov8" title="1">return changedFiles, nil</span>
 }
 
 func (v *Provider) CreateToken(_ context.Context, _ []string, _ *info.Event) (string, error) <span class="cov0" title="0">{
@@ -15175,7 +15190,8 @@ type Provider struct {
         PaginedNumber int
         userType      string // The type of user i.e bot or not
         skippedRun
-        triggerEvent string
+        triggerEvent       string
+        cachedChangedFiles *changedfiles.ChangedFiles
 }
 
 type skippedRun struct {
@@ -15638,11 +15654,24 @@ func (v *Provider) getPullRequest(ctx context.Context, runevent *info.Event) (*i
         return runevent, nil</span>
 }
 
-// GetFiles get a files from pull request.
+// GetFiles gets and caches the list of files changed by a given event.
 func (v *Provider) GetFiles(ctx context.Context, runevent *info.Event) (changedfiles.ChangedFiles, error) <span class="cov8" title="1">{
-        if runevent.TriggerTarget == triggertype.PullRequest </span><span class="cov8" title="1">{
+        if v.cachedChangedFiles == nil </span><span class="cov8" title="1">{
+                changes, err := v.fetchChangedFiles(ctx, runevent)
+                if err != nil </span><span class="cov0" title="0">{
+                        return changedfiles.ChangedFiles{}, err
+                }</span>
+                <span class="cov8" title="1">v.cachedChangedFiles = &amp;changes</span>
+        }
+        <span class="cov8" title="1">return *v.cachedChangedFiles, nil</span>
+}
+
+func (v *Provider) fetchChangedFiles(ctx context.Context, runevent *info.Event) (changedfiles.ChangedFiles, error) <span class="cov8" title="1">{
+        changedFiles := changedfiles.ChangedFiles{}
+
+        switch runevent.TriggerTarget </span>{
+        case triggertype.PullRequest:<span class="cov8" title="1">
                 opt := &amp;github.ListOptions{PerPage: v.PaginedNumber}
-                changedFiles := changedfiles.ChangedFiles{}
                 for </span><span class="cov8" title="1">{
                         repoCommit, resp, err := wrapAPI(v, "list_pull_request_files", func() ([]*github.CommitFile, *github.Response, error) </span><span class="cov8" title="1">{
                                 return v.Client().PullRequests.ListFiles(ctx, runevent.Organization, runevent.Repository, runevent.PullRequestNumber, opt)
@@ -15670,11 +15699,7 @@ func (v *Provider) GetFiles(ctx context.Context, runevent *info.Event) (changedf
                         }
                         <span class="cov8" title="1">opt.Page = resp.NextPage</span>
                 }
-                <span class="cov8" title="1">return changedFiles, nil</span>
-        }
-
-        <span class="cov8" title="1">if runevent.TriggerTarget == "push" </span><span class="cov8" title="1">{
-                changedFiles := changedfiles.ChangedFiles{}
+        case triggertype.Push:<span class="cov8" title="1">
                 rC, _, err := wrapAPI(v, "get_commit_files", func() (*github.RepositoryCommit, *github.Response, error) </span><span class="cov8" title="1">{
                         return v.Client().Repositories.GetCommit(ctx, runevent.Organization, runevent.Repository, runevent.SHA, &amp;github.ListOptions{})
                 }</span>)
@@ -15696,9 +15721,10 @@ func (v *Provider) GetFiles(ctx context.Context, runevent *info.Event) (changedf
                                 changedFiles.Renamed = append(changedFiles.Renamed, *rC.Files[i].Filename)
                         }</span>
                 }
-                <span class="cov8" title="1">return changedFiles, nil</span>
+        default:<span class="cov0" title="0"></span>
+                // No action necessary
         }
-        <span class="cov0" title="0">return changedfiles.ChangedFiles{}, nil</span>
+        <span class="cov8" title="1">return changedFiles, nil</span>
 }
 
 // getObject Get an object from a repository.
@@ -17648,7 +17674,8 @@ type Provider struct {
         triggerEvent      string
         // memberCache caches membership/permission checks by user ID within the
         // current provider instance lifecycle to avoid repeated API calls.
-        memberCache map[int]bool
+        memberCache        map[int]bool
+        cachedChangedFiles *changedfiles.ChangedFiles
 }
 
 func (v *Provider) Client() *gitlab.Client <span class="cov8" title="1">{
@@ -18081,12 +18108,28 @@ func (v *Provider) GetCommitInfo(_ context.Context, runevent *info.Event) error 
         <span class="cov8" title="1">return nil</span>
 }
 
-func (v *Provider) GetFiles(_ context.Context, runevent *info.Event) (changedfiles.ChangedFiles, error) <span class="cov8" title="1">{
+// GetFiles gets and caches the list of files changed by a given event.
+func (v *Provider) GetFiles(ctx context.Context, runevent *info.Event) (changedfiles.ChangedFiles, error) <span class="cov8" title="1">{
+        if v.cachedChangedFiles == nil </span><span class="cov8" title="1">{
+                changes, err := v.fetchChangedFiles(ctx, runevent)
+                if err != nil </span><span class="cov8" title="1">{
+                        return changedfiles.ChangedFiles{}, err
+                }</span>
+                <span class="cov8" title="1">v.cachedChangedFiles = &amp;changes</span>
+        }
+        <span class="cov8" title="1">return *v.cachedChangedFiles, nil</span>
+}
+
+func (v *Provider) fetchChangedFiles(_ context.Context, runevent *info.Event) (changedfiles.ChangedFiles, error) <span class="cov8" title="1">{
         if v.gitlabClient == nil </span><span class="cov0" title="0">{
                 return changedfiles.ChangedFiles{}, fmt.Errorf("no gitlab client has been initialized, " +
                         "exiting... (hint: did you forget setting a secret on your repo?)")
         }</span>
-        <span class="cov8" title="1">if runevent.TriggerTarget == triggertype.PullRequest </span><span class="cov8" title="1">{
+
+        <span class="cov8" title="1">changedFiles := changedfiles.ChangedFiles{}
+
+        switch runevent.TriggerTarget </span>{
+        case triggertype.PullRequest:<span class="cov8" title="1">
                 opt := &amp;gitlab.ListMergeRequestDiffsOptions{
                         ListOptions: gitlab.ListOptions{
                                 OrderBy:    "id",
@@ -18096,11 +18139,11 @@ func (v *Provider) GetFiles(_ context.Context, runevent *info.Event) (changedfil
                         },
                 }
                 options := []gitlab.RequestOptionFunc{}
-                changedFiles := changedfiles.ChangedFiles{}
 
                 for </span><span class="cov8" title="1">{
                         mrchanges, resp, err := v.Client().MergeRequests.ListMergeRequestDiffs(v.targetProjectID, runevent.PullRequestNumber, opt, options...)
                         if err != nil </span><span class="cov8" title="1">{
+                                // TODO: Should this return the files found so far?
                                 return changedfiles.ChangedFiles{}, err
                         }</span>
 
@@ -18130,16 +18173,12 @@ func (v *Provider) GetFiles(_ context.Context, runevent *info.Event) (changedfil
                                 gitlab.WithKeysetPaginationParameters(resp.NextLink),
                         }</span>
                 }
-                <span class="cov8" title="1">return changedFiles, nil</span>
-        }
-
-        <span class="cov8" title="1">if runevent.TriggerTarget == "push" </span><span class="cov8" title="1">{
+        case triggertype.Push:<span class="cov8" title="1">
                 pushChanges, _, err := v.Client().Commits.GetCommitDiff(v.sourceProjectID, runevent.SHA, &amp;gitlab.GetCommitDiffOptions{})
                 if err != nil </span><span class="cov0" title="0">{
                         return changedfiles.ChangedFiles{}, err
                 }</span>
-                <span class="cov8" title="1">changedFiles := changedfiles.ChangedFiles{}
-                for _, change := range pushChanges </span><span class="cov8" title="1">{
+                <span class="cov8" title="1">for _, change := range pushChanges </span><span class="cov8" title="1">{
                         changedFiles.All = append(changedFiles.All, change.NewPath)
                         if change.NewFile </span><span class="cov8" title="1">{
                                 changedFiles.Added = append(changedFiles.Added, change.NewPath)
@@ -18154,9 +18193,10 @@ func (v *Provider) GetFiles(_ context.Context, runevent *info.Event) (changedfil
                                 changedFiles.Renamed = append(changedFiles.Renamed, change.NewPath)
                         }</span>
                 }
-                <span class="cov8" title="1">return changedFiles, nil</span>
+        default:<span class="cov0" title="0"></span>
+                // No action necessary
         }
-        <span class="cov0" title="0">return changedfiles.ChangedFiles{}, nil</span>
+        <span class="cov8" title="1">return changedFiles, nil</span>
 }
 
 func (v *Provider) CreateToken(_ context.Context, _ []string, _ *info.Event) (string, error) <span class="cov0" title="0">{
@@ -21027,7 +21067,7 @@ type taskInfoSorter []pacv1alpha1.TaskInfos
 
 func (s taskInfoSorter) Len() int <span class="cov8" title="1">{ return len(s) }</span>
 
-func (s taskInfoSorter) Swap(i, j int) <span class="cov8" title="1">{
+func (s taskInfoSorter) Swap(i, j int) <span class="cov0" title="0">{
         s[i], s[j] = s[j], s[i]
 }</span>
 
