@@ -98,10 +98,10 @@ jobs:
             if [ -n "$RUN_ID" ]; then
               echo "  Found workflow run: $RUN_ID"
 
-              if gh run download "$RUN_ID" --repo "$REPO" --name coverage -D coverage-artifact 2>/dev/null; then
-                if [ -f "coverage-artifact/coverage.txt" ]; then
+              if gh run download "$RUN_ID" --repo "$REPO" --name code-coverage 2>/dev/null; then
+                if [ -f "coverage.txt" ]; then
                   echo "  ✓ Successfully downloaded coverage.txt from upstream artifact"
-                  cp coverage-artifact/coverage.txt coverage.out
+                  cp coverage.txt coverage.out
                   COVERAGE_FROM_UPSTREAM=true
                 else
                   echo "  ⚠ Artifact downloaded but coverage.txt not found"

@@ -29,6 +29,7 @@ repositories:
       - openapi_generated.go
 
   - name: tektoncd/pipeline
+    upstream_coverage_workflow: go-coverage.yml
     exclude_dirs:
       - cmd/
       - vendor/
