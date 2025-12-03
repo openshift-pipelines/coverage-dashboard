@@ -15,6 +15,7 @@ repositories:
       - openapi_generated.go
 
   - name: tektoncd/results
+    upstream_coverage_workflow: go-coverage.yml
     exclude_dirs:
       - cmd/
       - vendor/
@@ -44,6 +45,7 @@ repositories:
       - openapi_generated.go
 
   - name: tektoncd/operator
+    upstream_coverage_workflow: go-coverage.yml
     exclude_dirs:
       - cmd/
       - vendor/
@@ -58,6 +60,7 @@ repositories:
       - openapi_generated.go
 
   - name: tektoncd/chains
+    upstream_coverage_workflow: go-coverage.yml
     exclude_dirs:
       - cmd/
       - vendor/
@@ -70,6 +73,7 @@ repositories:
       - openapi_generated.go
 
   - name: tektoncd/triggers
+    upstream_coverage_workflow: go-coverage.yml
     exclude_dirs:
       - cmd/
       - vendor/
@@ -84,6 +88,7 @@ repositories:
       - openapi_generated.go
 
   - name: tektoncd/cli
+    upstream_coverage_workflow: go-coverage.yml
     exclude_dirs:
       - cmd/
       - vendor/
@@ -112,6 +117,7 @@ repositories:
       - openapi_generated.go
 
   - name: tektoncd/pruner
+    upstream_coverage_workflow: go-coverage.yml
     exclude_dirs:
       - cmd/
       - docs/
