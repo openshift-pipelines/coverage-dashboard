@@ -81,40 +81,7 @@ jobs:
           git clone --depth 1 "https://github.com/$REPO.git"
           cd "$REPO_NAME"
 
-          # Try to fetch coverage from upstream workflow artifact if configured
-          COVERAGE_FROM_UPSTREAM=false
-          if [ -n "$UPSTREAM_WORKFLOW" ]; then
-            echo "  Checking for upstream coverage from workflow: $UPSTREAM_WORKFLOW"
-
-            RUN_ID=$(gh run list \
-              --repo "$REPO" \
-              --workflow "$UPSTREAM_WORKFLOW" \
-              --branch main \
-              --status success \
-              --limit 1 \
-              --json databaseId \
-              --jq '.[0].databaseId' 2>/dev/null || echo "")
-
-            if [ -n "$RUN_ID" ]; then
-              echo "  Found workflow run: $RUN_ID"
-
-              if gh run download "$RUN_ID" --repo "$REPO" --name code-coverage 2>/dev/null; then
-                if [ -f "coverage.txt" ]; then
-                  echo "  ✓ Successfully downloaded coverage.txt from upstream artifact"
-                  cp coverage.txt coverage.out
-                  COVERAGE_FROM_UPSTREAM=true
-                else
-                  echo "  ⚠ Artifact downloaded but coverage.txt not found"
-                fi
-              else
-                echo "  ⚠ Could not download artifact from run $RUN_ID"
-              fi
-            else
-              echo "  ⚠ No successful workflow runs found for $UPSTREAM_WORKFLOW"
-            fi
-          fi
-
-          # Build the exclude pattern
+          # Build the exclude pattern first (needed for both local and upstream coverage)
           EXCLUDE_PATTERN=""
           if [ "$EXCLUDE_DIRS" != "[]" ]; then
             PATTERN_COUNT=$(echo "$EXCLUDE_DIRS" | jq 'length')
@@ -172,6 +139,39 @@ jobs:
             echo "    No exclusion pattern applied"
           fi
 
+          # Try to fetch coverage from upstream workflow artifact if configured
+          COVERAGE_FROM_UPSTREAM=false
+          if [ -n "$UPSTREAM_WORKFLOW" ]; then
+            echo "  Checking for upstream coverage from workflow: $UPSTREAM_WORKFLOW"
+
+            RUN_ID=$(gh run list \
+              --repo "$REPO" \
+              --workflow "$UPSTREAM_WORKFLOW" \
+              --branch main \
+              --status success \
+              --limit 1 \
+              --json databaseId \
+              --jq '.[0].databaseId' 2>/dev/null || echo "")
+
+            if [ -n "$RUN_ID" ]; then
+              echo "  Found workflow run: $RUN_ID"
+
+              if gh run download "$RUN_ID" --repo "$REPO" --name code-coverage 2>/dev/null; then
+                if [ -f "coverage.txt" ]; then
+                  echo "  ✓ Successfully downloaded coverage.txt from upstream artifact"
+                  cp coverage.txt coverage_raw.out
+                  COVERAGE_FROM_UPSTREAM=true
+                else
+                  echo "  ⚠ Artifact downloaded but coverage.txt not found"
+                fi
+              else
+                echo "  ⚠ Could not download artifact from run $RUN_ID"
+              fi
+            else
+              echo "  ⚠ No successful workflow runs found for $UPSTREAM_WORKFLOW"
+            fi
+          fi
+
           STATUS="ok"
           COVERAGE="0.0"
 
@@ -179,20 +179,33 @@ jobs:
           if [ "$COVERAGE_FROM_UPSTREAM" = false ]; then
             echo "  Running tests locally..."
             if [ -n "$INCLUDED_PACKAGES" ] && go test -coverprofile=coverage_raw.out $INCLUDED_PACKAGES; then
-              cp coverage_raw.out coverage.out
-
-              # Remove excluded files from coverage
-              if [ "$EXCLUDE_FILES" != "[]" ]; then
-                FILE_COUNT=$(echo "$EXCLUDE_FILES" | jq 'length')
-                for j in $(seq 0 $((FILE_COUNT - 1))); do
-                  FILE=$(echo "$EXCLUDE_FILES" | jq -r ".[$j]")
-                  echo "    Removing $FILE from coverage"
-                  sed -i "/$FILE/d" coverage.out || true
-                done
-              fi
+              echo "  ✓ Tests completed successfully"
             else
               echo "    ❌ Coverage failed or no testable packages"
               STATUS="failed"
+            fi
+          fi
+
+          # Apply exclusions to coverage data (for both upstream and local coverage)
+          if [ -f "coverage_raw.out" ] && [ "$STATUS" = "ok" ]; then
+            cp coverage_raw.out coverage.out
+
+            # Remove excluded directories from coverage
+            if [ -n "$EXCLUDE_PATTERN" ]; then
+              echo "    Applying exclusion pattern to coverage data: $EXCLUDE_PATTERN"
+              # Filter out lines matching excluded patterns
+              grep -vE "$EXCLUDE_PATTERN" coverage.out > coverage_filtered.out || cp coverage.out coverage_filtered.out
+              cp coverage_filtered.out coverage.out
+            fi
+
+            # Remove excluded files from coverage
+            if [ "$EXCLUDE_FILES" != "[]" ]; then
+              FILE_COUNT=$(echo "$EXCLUDE_FILES" | jq 'length')
+              for j in $(seq 0 $((FILE_COUNT - 1))); do
+                FILE=$(echo "$EXCLUDE_FILES" | jq -r ".[$j]")
+                echo "    Removing $FILE from coverage"
+                sed -i "/$FILE/d" coverage.out || true
+              done
             fi
           fi
 
