@@ -11,11 +11,40 @@ on:
     - cron: '0 3 * * *'  # Daily at 03:00 UTC
   workflow_dispatch:
 
+concurrency:
+  group: coverage-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
-  generate-coverage:
+  prepare:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+    steps:
+      - name: Checkout this repo (dashboard)
+        uses: actions/checkout@v4
+
+      - name: Install yq
+        run: pip install yq
+
+      - name: Generate matrix from repos.yaml
+        id: set-matrix
+        run: |
+          REPOS=$(yq -c '[.repositories[] | {
+            name: .name,
+            exclude_dirs: (.exclude_dirs // []),
+            exclude_files: (.exclude_files // []),
+            upstream_coverage_workflow: (.upstream_coverage_workflow // "")
+          }]' repos.yaml)
+          echo "matrix=$REPOS" >> $GITHUB_OUTPUT
+
+  coverage:
+    needs: prepare
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        repo: ${{ fromJson(needs.prepare.outputs.matrix) }}
 
     steps:
       - name: Checkout this repo (dashboard)
@@ -32,151 +61,239 @@ jobs:
           sudo apt-get install -y jq
           pip install yq
 
-      - name: Prepare workspace
-        run: mkdir workspace
-
       - name: Checkout gh-pages to access old coverage.json
         uses: actions/checkout@v4
         with:
           ref: gh-pages
           path: gh-pages
 
-      - name: Clone repos and calculate coverage
+      - name: Calculate coverage for ${{ matrix.repo.name }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ matrix.repo.name }}
+          EXCLUDE_DIRS: ${{ toJson(matrix.repo.exclude_dirs) }}
+          EXCLUDE_FILES: ${{ toJson(matrix.repo.exclude_files) }}
+          UPSTREAM_WORKFLOW: ${{ matrix.repo.upstream_coverage_workflow }}
         run: |
-          cd workspace
-          echo "[" > ../_temp_coverage.json
+          REPO_NAME=$(basename "$REPO")
 
-          COUNT=$(yq '.repositories | length' ../repos.yaml)
+          echo "→ Cloning $REPO..."
+          git clone --depth 1 "https://github.com/$REPO.git"
+          cd "$REPO_NAME"
 
-          OLD_COVERAGE_JSON=$(cat ../gh-pages/coverage.json || echo "[]")
+          # Try to fetch coverage from upstream workflow artifact if configured
+          COVERAGE_FROM_UPSTREAM=false
+          if [ -n "$UPSTREAM_WORKFLOW" ]; then
+            echo "  Checking for upstream coverage from workflow: $UPSTREAM_WORKFLOW"
 
-          for i in $(seq 0 $((COUNT - 1))); do
-            REPO=$(yq ".repositories[$i].name" ../repos.yaml | tr -d '"')
-            REPO_NAME=$(basename "$REPO")
+            RUN_ID=$(gh run list \
+              --repo "$REPO" \
+              --workflow "$UPSTREAM_WORKFLOW" \
+              --branch main \
+              --status success \
+              --limit 1 \
+              --json databaseId \
+              --jq '.[0].databaseId' 2>/dev/null || echo "")
 
-            echo "→ Cloning $REPO..."
-            git clone --depth 1 "https://github.com/$REPO.git"
-            cd "$REPO_NAME"
+            if [ -n "$RUN_ID" ]; then
+              echo "  Found workflow run: $RUN_ID"
 
-            # Get exclude patterns and build proper regex
-            EXCLUDE_DIRS_ARRAY=$(yq ".repositories[$i].exclude_dirs // []" ../../repos.yaml)
-            EXCLUDE_FILES=$(yq ".repositories[$i].exclude_files // []" ../../repos.yaml)
-
-            # Build the exclude pattern more carefully
-            EXCLUDE_PATTERN=""
-            if [ "$EXCLUDE_DIRS_ARRAY" != "[]" ]; then
-              # Process each exclude pattern individually
-              PATTERN_COUNT=$(echo "$EXCLUDE_DIRS_ARRAY" | yq 'length')
-              PATTERNS=""
-
-              for k in $(seq 0 $((PATTERN_COUNT - 1))); do
-                PATTERN=$(echo "$EXCLUDE_DIRS_ARRAY" | yq ".[$k]" | tr -d '"')
-                echo "    Processing exclude pattern: '$PATTERN'"
-
-                # Handle different pattern types
-                case "$PATTERN" in
-                  */*)
-                    # Pattern with slashes - treat as path pattern
-                    if [[ "$PATTERN" == /* ]]; then
-                      # Starts with slash, use as-is but escape special chars
-                      ESCAPED_PATTERN=$(echo "$PATTERN" | sed 's/[[\.*^$()+{}|]/\\&/g')
-                    else
-                      # Add leading slash and treat trailing slash specially
-                      if [[ "$PATTERN" == */ ]]; then
-                        # Ends with slash - match directory component
-                        DIR_NAME=${PATTERN%/}
-                        ESCAPED_PATTERN="/${DIR_NAME}(/|$)"
-                      else
-                        # Has slash but doesn't end with one
-                        ESCAPED_PATTERN="/$(echo "$PATTERN" | sed 's/[[\.*^$()+{}|]/\\&/g')"
-                      fi
-                    fi
-                    ;;
-                  *)
-                    # Simple directory name - match as path component
-                    ESCAPED_PATTERN="/${PATTERN}(/|$)"
-                    ;;
-                esac
-
-                echo "    Escaped pattern: '$ESCAPED_PATTERN'"
-
-                if [ -z "$PATTERNS" ]; then
-                  PATTERNS="$ESCAPED_PATTERN"
+              if gh run download "$RUN_ID" --repo "$REPO" --name coverage -D coverage-artifact 2>/dev/null; then
+                if [ -f "coverage-artifact/coverage.txt" ]; then
+                  echo "  ✓ Successfully downloaded coverage.txt from upstream artifact"
+                  cp coverage-artifact/coverage.txt coverage.out
+                  COVERAGE_FROM_UPSTREAM=true
                 else
-                  PATTERNS="$PATTERNS|$ESCAPED_PATTERN"
+                  echo "  ⚠ Artifact downloaded but coverage.txt not found"
                 fi
-              done
-
-              EXCLUDE_PATTERN="$PATTERNS"
-              echo "    Final exclude pattern: '$EXCLUDE_PATTERN'"
-            fi
-
-            # Get packages and apply exclusions
-            ALL_PACKAGES=$(go list ./... 2>/dev/null || true)
-            echo "    All packages found:"
-            echo "$ALL_PACKAGES" | while read pkg; do echo "      $pkg"; done
-
-            if [ -n "$EXCLUDE_PATTERN" ] && [ -n "$ALL_PACKAGES" ]; then
-              echo "    Applying exclusion pattern: $EXCLUDE_PATTERN"
-              INCLUDED_PACKAGES=$(echo "$ALL_PACKAGES" | grep -vE "$EXCLUDE_PATTERN" || true)
-              echo "    Packages after exclusion:"
-              echo "$INCLUDED_PACKAGES" | while read pkg; do [ -n "$pkg" ] && echo "      $pkg"; done
-              echo "    Original packages: $(echo "$ALL_PACKAGES" | wc -l)"
-              echo "    Included packages: $(echo "$INCLUDED_PACKAGES" | wc -l)"
+              else
+                echo "  ⚠ Could not download artifact from run $RUN_ID"
+              fi
             else
-              INCLUDED_PACKAGES="$ALL_PACKAGES"
-              echo "    No exclusion pattern applied"
+              echo "  ⚠ No successful workflow runs found for $UPSTREAM_WORKFLOW"
             fi
+          fi
 
-            STATUS="ok"
-            COVERAGE="0.0"
+          # Build the exclude pattern
+          EXCLUDE_PATTERN=""
+          if [ "$EXCLUDE_DIRS" != "[]" ]; then
+            PATTERN_COUNT=$(echo "$EXCLUDE_DIRS" | jq 'length')
+            PATTERNS=""
 
+            for k in $(seq 0 $((PATTERN_COUNT - 1))); do
+              PATTERN=$(echo "$EXCLUDE_DIRS" | jq -r ".[$k]")
+              echo "    Processing exclude pattern: '$PATTERN'"
+
+              case "$PATTERN" in
+                */*)
+                  if [[ "$PATTERN" == /* ]]; then
+                    ESCAPED_PATTERN=$(echo "$PATTERN" | sed 's/[[\.*^$()+{}|]/\\&/g')
+                  else
+                    if [[ "$PATTERN" == */ ]]; then
+                      DIR_NAME=${PATTERN%/}
+                      ESCAPED_PATTERN="/${DIR_NAME}(/|$)"
+                    else
+                      ESCAPED_PATTERN="/$(echo "$PATTERN" | sed 's/[[\.*^$()+{}|]/\\&/g')"
+                    fi
+                  fi
+                  ;;
+                *)
+                  ESCAPED_PATTERN="/${PATTERN}(/|$)"
+                  ;;
+              esac
+
+              echo "    Escaped pattern: '$ESCAPED_PATTERN'"
+
+              if [ -z "$PATTERNS" ]; then
+                PATTERNS="$ESCAPED_PATTERN"
+              else
+                PATTERNS="$PATTERNS|$ESCAPED_PATTERN"
+              fi
+            done
+
+            EXCLUDE_PATTERN="$PATTERNS"
+            echo "    Final exclude pattern: '$EXCLUDE_PATTERN'"
+          fi
+
+          # Get packages and apply exclusions
+          ALL_PACKAGES=$(go list ./... 2>/dev/null || true)
+          echo "    All packages found:"
+          echo "$ALL_PACKAGES" | while read pkg; do echo "      $pkg"; done
+
+          if [ -n "$EXCLUDE_PATTERN" ] && [ -n "$ALL_PACKAGES" ]; then
+            echo "    Applying exclusion pattern: $EXCLUDE_PATTERN"
+            INCLUDED_PACKAGES=$(echo "$ALL_PACKAGES" | grep -vE "$EXCLUDE_PATTERN" || true)
+            echo "    Packages after exclusion:"
+            echo "$INCLUDED_PACKAGES" | while read pkg; do [ -n "$pkg" ] && echo "      $pkg"; done
+            echo "    Original packages: $(echo "$ALL_PACKAGES" | wc -l)"
+            echo "    Included packages: $(echo "$INCLUDED_PACKAGES" | wc -l)"
+          else
+            INCLUDED_PACKAGES="$ALL_PACKAGES"
+            echo "    No exclusion pattern applied"
+          fi
+
+          STATUS="ok"
+          COVERAGE="0.0"
+
+          # If we didn't get coverage from upstream, run tests locally
+          if [ "$COVERAGE_FROM_UPSTREAM" = false ]; then
+            echo "  Running tests locally..."
             if [ -n "$INCLUDED_PACKAGES" ] && go test -coverprofile=coverage_raw.out $INCLUDED_PACKAGES; then
               cp coverage_raw.out coverage.out
 
               # Remove excluded files from coverage
-              FILE_COUNT=$(echo "$EXCLUDE_FILES" | yq 'length')
-              for j in $(seq 0 $((FILE_COUNT - 1))); do
-                FILE=$(echo "$EXCLUDE_FILES" | yq ".[$j]" | tr -d '"')
-                echo "    Removing $FILE from coverage"
-                sed -i "/$FILE/d" coverage.out || true
-              done
-
-              COVERAGE=$(go tool cover -func=coverage.out | grep total | awk '{print $3}' | tr -d '%')
-              # Generate HTML report
-              go tool cover -html=coverage.out -o coverage.html
-              mkdir -p ../../gh-pages/coverage/$REPO
-              cp coverage.html ../../gh-pages/coverage/$REPO/index.html
+              if [ "$EXCLUDE_FILES" != "[]" ]; then
+                FILE_COUNT=$(echo "$EXCLUDE_FILES" | jq 'length')
+                for j in $(seq 0 $((FILE_COUNT - 1))); do
+                  FILE=$(echo "$EXCLUDE_FILES" | jq -r ".[$j]")
+                  echo "    Removing $FILE from coverage"
+                  sed -i "/$FILE/d" coverage.out || true
+                done
+              fi
             else
               echo "    ❌ Coverage failed or no testable packages"
               STATUS="failed"
-
-              OLD_ENTRY=$(echo "$OLD_COVERAGE_JSON" | jq -r --arg repo "$REPO" '.data[]? | select(.repo == $repo)')
-              if [ -n "$OLD_ENTRY" ]; then
-                COVERAGE=$(echo "$OLD_ENTRY" | jq -r '.coverage')
-              else
-                COVERAGE=null
-              fi
             fi
+          fi
 
-            echo "    → $REPO coverage: $COVERAGE% (status: $STATUS)"
-            echo "  {\"repo\": \"$REPO\", \"coverage\": $COVERAGE, \"status\": \"$STATUS\" }," >> ../../_temp_coverage.json
+          # Calculate coverage if we have coverage.out
+          if [ -f "coverage.out" ] && [ "$STATUS" = "ok" ]; then
+            COVERAGE=$(go tool cover -func=coverage.out | grep total | awk '{print $3}' | tr -d '%')
+            go tool cover -html=coverage.out -o coverage.html
+            mkdir -p ../coverage-html
+            cp coverage.html ../coverage-html/index.html
+          elif [ "$STATUS" = "failed" ]; then
+            OLD_COVERAGE_JSON=$(cat ../gh-pages/coverage.json 2>/dev/null || echo '{"data":[]}')
+            OLD_ENTRY=$(echo "$OLD_COVERAGE_JSON" | jq -r --arg repo "$REPO" '.data[]? | select(.repo == $repo)')
+            if [ -n "$OLD_ENTRY" ]; then
+              COVERAGE=$(echo "$OLD_ENTRY" | jq -r '.coverage')
+            else
+              COVERAGE=null
+            fi
+          fi
 
-            cd ..
+          echo "    → $REPO coverage: $COVERAGE% (status: $STATUS)"
+
+          # Create result JSON
+          cd ..
+          jq -n \
+            --arg repo "$REPO" \
+            --argjson coverage "$COVERAGE" \
+            --arg status "$STATUS" \
+            '{repo: $repo, coverage: $coverage, status: $status}' > result.json
+
+      - name: Upload coverage result
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-result-${{ strategy.job-index }}
+          path: |
+            result.json
+            coverage-html/
+          retention-days: 1
+
+  aggregate:
+    needs: [prepare, coverage]
+    runs-on: ubuntu-latest
+    if: always()
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout this repo (dashboard)
+        uses: actions/checkout@v4
+
+      - name: Install jq
+        run: sudo apt-get update && sudo apt-get install -y jq
+
+      - name: Checkout gh-pages
+        uses: actions/checkout@v4
+        with:
+          ref: gh-pages
+          path: gh-pages
+
+      - name: Download all coverage results
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          pattern: coverage-result-*
+
+      - name: Aggregate results
+        run: |
+          echo "Aggregating coverage results..."
+
+          echo "[" > _temp_coverage.json
+
+          FIRST=true
+          for dir in artifacts/coverage-result-*/; do
+            if [ -f "$dir/result.json" ]; then
+              if [ "$FIRST" = true ]; then
+                FIRST=false
+              else
+                echo "," >> _temp_coverage.json
+              fi
+              cat "$dir/result.json" >> _temp_coverage.json
+            fi
           done
 
-          cd ..
-          sed -i '$ s/,$//' _temp_coverage.json
           echo "]" >> _temp_coverage.json
 
-      - name: Wrap coverage.json with run_url
-        run: |
           RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
 
           jq -n \
             --arg run_url "$RUN_URL" \
             --argjson data "$(cat _temp_coverage.json)" \
             '{run_url: $run_url, data: $data}' > coverage.json
+
+          # Copy HTML reports to gh-pages
+          for dir in artifacts/coverage-result-*/; do
+            if [ -f "$dir/result.json" ]; then
+              REPO=$(jq -r '.repo' "$dir/result.json")
+              if [ -f "$dir/coverage-html/index.html" ]; then
+                mkdir -p "gh-pages/coverage/$REPO"
+                cp "$dir/coverage-html/index.html" "gh-pages/coverage/$REPO/index.html"
+              fi
+            fi
+          done
 
       - name: Upload coverage artifacts (PR only)
         if: github.event_name == 'pull_request'
