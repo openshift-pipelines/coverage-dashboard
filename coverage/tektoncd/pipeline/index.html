@@ -18075,8 +18075,12 @@ func findAndValidateResultRefsForMatrix(tasks []PipelineTask, taskMapping map[st
 func validateMatrixedPipelineTaskConsumed(expressions []string, taskMapping map[string]PipelineTask) (resultRefs []*ResultRef, errs *apis.FieldError) <span class="cov8" title="1">{
         var filteredExpressions []string
         for _, expression := range expressions </span><span class="cov8" title="1">{
+                // if it is not matrix result ref expression, skip
+                if !resultref.LooksLikeResultRef(expression) </span><span class="cov8" title="1">{
+                        continue</span>
+                }
                 // ie. "tasks.&lt;pipelineTaskName&gt;.results.&lt;resultName&gt;[*]"
-                subExpressions := strings.Split(expression, ".")
+                <span class="cov8" title="1">subExpressions := strings.Split(expression, ".")
                 pipelineTask := subExpressions[1] // pipelineTaskName
                 taskConsumed := taskMapping[pipelineTask]
                 if taskConsumed.IsMatrixed() </span><span class="cov8" title="1">{

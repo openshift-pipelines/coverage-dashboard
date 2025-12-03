@@ -117,7 +117,7 @@
 				
 				<option value="file30">github.com/openshift-pipelines/manual-approval-gate/pkg/client/listers/approvaltask/v1alpha1/approvaltask.go (0.0%)</option>
 				
-				<option value="file31">github.com/openshift-pipelines/manual-approval-gate/pkg/reconciler/approvaltask/approvaltask.go (6.0%)</option>
+				<option value="file31">github.com/openshift-pipelines/manual-approval-gate/pkg/reconciler/approvaltask/approvaltask.go (5.0%)</option>
 				
 				<option value="file32">github.com/openshift-pipelines/manual-approval-gate/pkg/reconciler/approvaltask/controller.go (0.0%)</option>
 				
@@ -2777,6 +2777,7 @@ const (
         allApprovers      = "approvers"
         approvalsRequired = "numberOfApprovalsRequired"
         description       = "description"
+        timeout           = "timeout"
 
         // CustomRunLabelKey is used as the label identifier for a ApprovalTask
         CustomRunLabelKey = "tekton.dev/customRun"
@@ -2852,6 +2853,24 @@ func (c *Reconciler) ReconcileKind(ctx context.Context, run *v1beta1.CustomRun) 
                 }, run)
                 return nil
         }</span>
+
+        // Parse timeout parameter from params if provided
+        <span class="cov0" title="0">if run.Spec.Timeout == nil </span><span class="cov0" title="0">{
+                for _, param := range run.Spec.Params </span><span class="cov0" title="0">{
+                        if param.Name == timeout </span><span class="cov0" title="0">{
+                                duration, err := time.ParseDuration(param.Value.StringVal)
+                                if err != nil </span><span class="cov0" title="0">{
+                                        logger.Errorf("Invalid timeout parameter value '%s' for Run %s/%s: %v", param.Value.StringVal, run.Namespace, run.Name, err)
+                                        run.Status.MarkCustomRunFailed(approvaltaskv1alpha1.ApprovalTaskRunReasonFailedValidation.String(),
+                                                fmt.Sprintf("Invalid timeout parameter: %s", err.Error()))
+                                        return nil
+                                }</span>
+                                <span class="cov0" title="0">run.Spec.Timeout = &amp;metav1.Duration{Duration: duration}
+                                logger.Infof("Set timeout from parameter to %v for Run %s/%s", duration, run.Namespace, run.Name)
+                                break</span>
+                        }
+                }
+        }
 
         // Store the condition before reconcile
         <span class="cov0" title="0">beforeCondition := run.Status.GetCondition(apis.ConditionSucceeded)
@@ -2932,8 +2951,12 @@ func (r *Reconciler) reconcile(ctx context.Context, run *v1beta1.CustomRun, stat
         <span class="cov0" title="0">if approvalTask.Status.StartTime != nil </span><span class="cov0" title="0">{
                 elapsed := r.clock.Since(approvalTask.Status.StartTime.Time)
                 waitTime := timeout.Duration - elapsed
-                return controller.NewRequeueAfter(waitTime)
-        }</span>
+                // If waitTime is negative or very small, requeue immediately to check timeout
+                if waitTime &lt;= 0 </span><span class="cov0" title="0">{
+                        waitTime = time.Second
+                }</span>
+                <span class="cov0" title="0">return controller.NewRequeueAfter(waitTime)</span>
+        }
 
         <span class="cov0" title="0">return nil</span>
 }
