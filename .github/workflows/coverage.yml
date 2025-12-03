@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - main
+  pull_request:
+    branches:
+      - main
   schedule:
     - cron: '0 3 * * *'  # Daily at 03:00 UTC
   workflow_dispatch:
@@ -175,7 +178,18 @@ jobs:
             --argjson data "$(cat _temp_coverage.json)" \
             '{run_url: $run_url, data: $data}' > coverage.json
 
+      - name: Upload coverage artifacts (PR only)
+        if: github.event_name == 'pull_request'
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-reports
+          path: |
+            coverage.json
+            gh-pages/coverage/
+          retention-days: 30
+
       - name: Commit and push updated coverage.json
+        if: github.event_name != 'pull_request'
         run: |
           cp coverage.json gh-pages/coverage.json
           cd gh-pages
