@@ -1,5 +1,5 @@
 {
-  "run_url": "https://github.com/openshift-pipelines/coverage-dashboard/actions/runs/19890657335",
+  "run_url": "https://github.com/openshift-pipelines/coverage-dashboard/actions/runs/19891700639",
   "data": [
     {
       "repo": "openshift-pipelines/pipelines-as-code",
@@ -29,7 +29,7 @@
     {
       "repo": "tektoncd/triggers",
       "coverage": 75.6,
-      "status": "failed"
+      "status": "ok"
     },
     {
       "repo": "tektoncd/cli",
@@ -39,6 +39,11 @@
     {
       "repo": "openshift-pipelines/manual-approval-gate",
       "coverage": 12.1,
+      "status": "ok"
+    },
+    {
+      "repo": "tektoncd/pruner",
+      "coverage": 55.9,
       "status": "ok"
     }
   ]
