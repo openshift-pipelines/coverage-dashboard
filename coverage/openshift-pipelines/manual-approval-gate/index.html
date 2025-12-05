@@ -121,7 +121,7 @@
 				
 				<option value="file32">github.com/openshift-pipelines/manual-approval-gate/pkg/reconciler/approvaltask/controller.go (0.0%)</option>
 				
-				<option value="file33">github.com/openshift-pipelines/manual-approval-gate/pkg/reconciler/approvaltask/utils.go (62.2%)</option>
+				<option value="file33">github.com/openshift-pipelines/manual-approval-gate/pkg/reconciler/approvaltask/utils.go (71.5%)</option>
 				
 				<option value="file34">github.com/openshift-pipelines/manual-approval-gate/pkg/reconciler/webhook/controller.go (0.0%)</option>
 				
@@ -3114,7 +3114,7 @@ func validateGroupSyntax(paramValue string, paramIndex int) error <span class="c
         if strings.TrimSpace(groupName) == "" </span><span class="cov0" title="0">{
                 return fmt.Errorf("approvers[%d]: group name cannot be empty", paramIndex)
         }</span>
-        <span class="cov8" title="1">if strings.Contains(groupName, ":") </span><span class="cov0" title="0">{
+        <span class="cov8" title="1">if strings.Contains(groupName, ":") </span><span class="cov8" title="1">{
                 return fmt.Errorf("approvers[%d]: group name '%s' cannot contain colons", paramIndex, groupName)
         }</span>
         <span class="cov8" title="1">if strings.Contains(groupName, " ") </span><span class="cov8" title="1">{
@@ -3127,7 +3127,7 @@ func validateGroupSyntax(paramValue string, paramIndex int) error <span class="c
 // validateUserSyntax validates a plain username approver.
 func validateUserSyntax(paramValue string, paramIndex int) error <span class="cov8" title="1">{
         // Validate user name format inline
-        if strings.TrimSpace(paramValue) == "" </span><span class="cov0" title="0">{
+        if strings.TrimSpace(paramValue) == "" </span><span class="cov8" title="1">{
                 return fmt.Errorf("approvers[%d]: username cannot be empty", paramIndex)
         }</span>
         
@@ -3222,9 +3222,9 @@ func parseApproversList(param v1beta1.Param, validationErrors *[]string) []inter
                         return approverList
                 }</span>
                 
-                <span class="cov0" title="0">if arr, ok := jsonData.([]interface{}); ok </span><span class="cov0" title="0">{
+                <span class="cov8" title="1">if arr, ok := jsonData.([]interface{}); ok </span><span class="cov8" title="1">{
                         approverList = arr
-                }</span> else<span class="cov0" title="0"> {
+                }</span> else<span class="cov8" title="1"> {
                         *validationErrors = append(*validationErrors, "expected an array of approvers")
                 }</span>
         }
@@ -3239,7 +3239,7 @@ func validateMalformedObjectApprover(approver map[string]interface{}, index int,
                         // Format the object as JSON for clear error message
                         objJSON := fmt.Sprintf(`{"group":"%s"}`, groupStr)
                         *validationErrors = append(*validationErrors, fmt.Sprintf("approvers[%d]: invalid group format %s - use 'group:%s' format instead", index, objJSON, groupStr))
-                }</span> else<span class="cov0" title="0"> {
+                }</span> else<span class="cov8" title="1"> {
                         *validationErrors = append(*validationErrors, fmt.Sprintf("approvers[%d]: invalid group specification", index))
                 }</span>
         } else<span class="cov8" title="1"> {
@@ -3266,7 +3266,7 @@ func checkCustomRunReferencesApprovalTask(run *v1beta1.CustomRun) error <span cl
         if run.Spec.CustomRef != nil </span><span class="cov8" title="1">{
                 apiVersion = run.Spec.CustomRef.APIVersion
                 kind = string(run.Spec.CustomRef.Kind)
-        }</span> else<span class="cov0" title="0"> if run.Spec.CustomSpec != nil </span><span class="cov0" title="0">{
+        }</span> else<span class="cov8" title="1"> if run.Spec.CustomSpec != nil </span><span class="cov8" title="1">{
                 apiVersion = run.Spec.CustomSpec.APIVersion
                 kind = run.Spec.CustomSpec.Kind
         }</span>
@@ -3298,25 +3298,25 @@ func initializeCustomRun(ctx context.Context, run *v1beta1.CustomRun) <span clas
         }
 }
 
-func getOrCreateApprovalTask(ctx context.Context, approvaltaskClientSet versioned.Interface, run *v1beta1.CustomRun) (*v1alpha1.ApprovalTask, error) <span class="cov0" title="0">{
+func getOrCreateApprovalTask(ctx context.Context, approvaltaskClientSet versioned.Interface, run *v1beta1.CustomRun) (*v1alpha1.ApprovalTask, error) <span class="cov8" title="1">{
         approvalTask := v1alpha1.ApprovalTask{}
 
-        if run.Spec.CustomRef != nil </span><span class="cov0" title="0">{
+        if run.Spec.CustomRef != nil </span><span class="cov8" title="1">{
                 // Use the k8 client to get the ApprovalTask rather than the lister.  This avoids a timing issue where
                 // the ApprovalTask is not yet in the lister cache if it is created at nearly the same time as the Run.
                 // See https://github.com/tektoncd/pipeline/issues/2740 for discussion on this issue.
                 tl, err := approvaltaskClientSet.OpenshiftpipelinesV1alpha1().ApprovalTasks(run.Namespace).Get(ctx, run.Name, metav1.GetOptions{})
-                if err != nil </span><span class="cov0" title="0">{
-                        if errors.IsNotFound(err) </span><span class="cov0" title="0">{
+                if err != nil </span><span class="cov8" title="1">{
+                        if errors.IsNotFound(err) </span><span class="cov8" title="1">{
                                 at, err := createApprovalTask(ctx, approvaltaskClientSet, run)
                                 if err != nil </span><span class="cov0" title="0">{
                                         return nil, err
                                 }</span>
-                                <span class="cov0" title="0">return &amp;at, nil</span>
+                                <span class="cov8" title="1">return &amp;at, nil</span>
                         }
                 }
-                <span class="cov0" title="0">approvalTask = *tl</span>
-        } else<span class="cov0" title="0"> if run.Spec.CustomSpec != nil </span><span class="cov0" title="0">{
+                <span class="cov8" title="1">approvalTask = *tl</span>
+        } else<span class="cov8" title="1"> if run.Spec.CustomSpec != nil </span><span class="cov8" title="1">{
                 // FIXME(openshift-pipelines) support embedded spec
                 if err := json.Unmarshal(run.Spec.CustomSpec.Spec.Raw, &amp;approvalTask.Spec); err != nil </span><span class="cov0" title="0">{
                         run.Status.MarkCustomRunFailed(v1alpha1.ApprovalTaskRunReasonCouldntGetApprovalTask.String(),
@@ -3326,12 +3326,12 @@ func getOrCreateApprovalTask(ctx context.Context, approvaltaskClientSet versione
                 }</span>
         }
 
-        <span class="cov0" title="0">return &amp;approvalTask, nil</span>
+        <span class="cov8" title="1">return &amp;approvalTask, nil</span>
 }
 
-func storeApprovalTaskSpec(status *v1alpha1.ApprovalTaskRunStatus, approvalTaskSpec *v1alpha1.ApprovalTaskSpec) <span class="cov0" title="0">{
+func storeApprovalTaskSpec(status *v1alpha1.ApprovalTaskRunStatus, approvalTaskSpec *v1alpha1.ApprovalTaskSpec) <span class="cov8" title="1">{
         // Only store the ApprovalTaskSpec once, if it has never been set before.
-        if status.ApprovalTaskSpec == nil </span><span class="cov0" title="0">{
+        if status.ApprovalTaskSpec == nil </span><span class="cov8" title="1">{
                 status.ApprovalTaskSpec = approvalTaskSpec
         }</span>
 }
@@ -3536,9 +3536,9 @@ func countApprovalsReceived(approvalTask v1alpha1.ApprovalTask) int <span class=
 
                 <span class="cov8" title="1">if v1alpha1.DefaultedApproverType(approver.Type) == "User" </span><span class="cov8" title="1">{
                         approvedUsers[approver.Name] = true
-                }</span> else<span class="cov0" title="0"> if v1alpha1.DefaultedApproverType(approver.Type) == "Group" </span><span class="cov0" title="0">{
-                        for _, user := range approver.Users </span><span class="cov0" title="0">{
-                                if user.Input == hasApproved </span><span class="cov0" title="0">{
+                }</span> else<span class="cov8" title="1"> if v1alpha1.DefaultedApproverType(approver.Type) == "Group" </span><span class="cov8" title="1">{
+                        for _, user := range approver.Users </span><span class="cov8" title="1">{
+                                if user.Input == hasApproved </span><span class="cov8" title="1">{
                                         approvedUsers[user.Name] = true
                                 }</span>
                         }
