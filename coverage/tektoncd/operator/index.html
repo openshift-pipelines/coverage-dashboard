@@ -7756,7 +7756,7 @@ func ComponentDir(instance v1alpha1.TektonComponent) string <span class="cov8" t
         case *v1alpha1.ManualApprovalGate:<span class="cov0" title="0">
                 return filepath.Join(koDataDir, "manual-approval-gate")</span>
         case *v1alpha1.TektonPruner:<span class="cov8" title="1">
-                return filepath.Join(koDataDir, v1alpha1.TektonPrunerResourceName)</span>
+                return filepath.Join(koDataDir, "tekton-pruner")</span>
         }
         <span class="cov0" title="0">return ""</span>
 }
