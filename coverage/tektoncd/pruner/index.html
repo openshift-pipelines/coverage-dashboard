@@ -4110,7 +4110,8 @@ func runGarbageCollector(ctx context.Context) <span class="cov8" title="1">{
         logger.Info("Garbage collection completed")</span>
 }
 
-// getFilteredNamespaces returns namespaces not starting with "kube" or "openshift"
+// getFilteredNamespaces returns namespaces excluding system namespaces
+// Excluded: kube-*, openshift-*, tekton-pipelines, tekton-operator
 func getFilteredNamespaces(ctx context.Context, client kubernetes.Interface) ([]string, error) <span class="cov8" title="1">{
         nsList, err := client.CoreV1().Namespaces().List(ctx, metav1.ListOptions{})
         if err != nil </span><span class="cov0" title="0">{
@@ -4120,7 +4121,8 @@ func getFilteredNamespaces(ctx context.Context, client kubernetes.Interface) ([]
         <span class="cov8" title="1">var filtered []string
         for _, ns := range nsList.Items </span><span class="cov8" title="1">{
                 name := ns.Name
-                if !strings.HasPrefix(name, "kube") &amp;&amp; !strings.HasPrefix(name, "openshift") &amp;&amp; !strings.HasPrefix(name, "tekton") </span><span class="cov8" title="1">{
+                if !strings.HasPrefix(name, "kube-") &amp;&amp; !strings.HasPrefix(name, "openshift-") &amp;&amp;
+                        name != "tekton-pipelines" &amp;&amp; name != "tekton-operator" </span><span class="cov8" title="1">{
                         filtered = append(filtered, name)
                 }</span>
         }
@@ -4438,7 +4440,7 @@ func validateRequiredLabels(cm *corev1.ConfigMap) error <span class="cov8" title
 }
 
 // validateNamespaceForConfig checks if a namespace is allowed for namespace-level configs
-// Forbidden namespaces: kube-*, openshift-*, tekton-*
+// Forbidden namespaces: kube-*, openshift-*, tekton-pipelines, tekton-operator
 func validateNamespaceForConfig(namespace string) error <span class="cov8" title="1">{
         if strings.HasPrefix(namespace, "kube-") </span><span class="cov8" title="1">{
                 return fmt.Errorf("namespace-level config cannot be created in kube-* namespaces, got: %s", namespace)
@@ -4446,8 +4448,8 @@ func validateNamespaceForConfig(namespace string) error <span class="cov8" title
         <span class="cov8" title="1">if strings.HasPrefix(namespace, "openshift-") </span><span class="cov8" title="1">{
                 return fmt.Errorf("namespace-level config cannot be created in openshift-* namespaces, got: %s", namespace)
         }</span>
-        <span class="cov8" title="1">if strings.HasPrefix(namespace, "tekton-") </span><span class="cov8" title="1">{
-                return fmt.Errorf("namespace-level config cannot be created in tekton-* namespaces, got: %s", namespace)
+        <span class="cov8" title="1">if namespace == "tekton-pipelines" || namespace == "tekton-operator" </span><span class="cov8" title="1">{
+                return fmt.Errorf("namespace-level config cannot be created in %s namespace", namespace)
         }</span>
         <span class="cov8" title="1">return nil</span>
 }

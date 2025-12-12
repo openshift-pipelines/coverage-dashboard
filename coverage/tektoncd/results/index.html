@@ -7006,17 +7006,17 @@ func newRetentionPolicyFromMap(cfgMap map[string]string) (*RetentionPolicy, erro
                 rp.RunAt = schedule
         }</span>
 
-        <span class="cov8" title="1">if duration, ok := cfgMap[defaultRetention]; ok </span><span class="cov8" title="1">{
-                v, err := ParseDuration(duration)
-                if err != nil </span><span class="cov0" title="0">{
-                        return nil, fmt.Errorf("incorrect configuration for defaultRetention: %w", err)
-                }</span>
-                <span class="cov8" title="1">rp.DefaultRetention = v</span>
-        } else<span class="cov8" title="1"> if duration, ok := cfgMap[maxRetention]; ok </span><span class="cov8" title="1">{
-                log.Println("WARNING: configuration key 'maxRetention' is deprecated; please use 'defaultRetention' instead.")
+        <span class="cov8" title="1">if duration, ok := cfgMap[maxRetention]; ok </span><span class="cov8" title="1">{
+                log.Println("WARNING: configuration key 'maxRetention' is deprecated and will be removed in a future release. See migration guide: https://github.com/tektoncd/results/blob/main/docs/retention-policy-agent/README.md#migrating-from-maxretention-to-defaultretention")
                 v, err := ParseDuration(duration)
                 if err != nil </span><span class="cov0" title="0">{
                         return nil, fmt.Errorf("incorrect configuration for maxRetention: %w", err)
+                }</span>
+                <span class="cov8" title="1">rp.DefaultRetention = v</span>
+        } else<span class="cov8" title="1"> if duration, ok := cfgMap[defaultRetention]; ok </span><span class="cov8" title="1">{
+                v, err := ParseDuration(duration)
+                if err != nil </span><span class="cov0" title="0">{
+                        return nil, fmt.Errorf("incorrect configuration for defaultRetention: %w", err)
                 }</span>
                 <span class="cov8" title="1">rp.DefaultRetention = v</span>
         }
