@@ -253,7 +253,7 @@
 				
 				<option value="file98">github.com/openshift-pipelines/pipelines-as-code/pkg/provider/bitbucketcloud/acl.go (85.5%)</option>
 				
-				<option value="file99">github.com/openshift-pipelines/pipelines-as-code/pkg/provider/bitbucketcloud/bitbucket.go (81.0%)</option>
+				<option value="file99">github.com/openshift-pipelines/pipelines-as-code/pkg/provider/bitbucketcloud/bitbucket.go (81.8%)</option>
 				
 				<option value="file100">github.com/openshift-pipelines/pipelines-as-code/pkg/provider/bitbucketcloud/detect.go (90.6%)</option>
 				
@@ -12132,7 +12132,7 @@ func (v *Provider) CreateStatus(_ context.Context, event *info.Event, statusopts
         }</span>
 
         <span class="cov8" title="1">cso := &amp;bitbucket.CommitStatusOptions{
-                Key:         v.pacInfo.ApplicationName,
+                Key:         provider.GetCheckName(statusopts, v.pacInfo),
                 Url:         detailsURL,
                 State:       statusopts.Conclusion,
                 Description: statusopts.Title,
@@ -12160,7 +12160,7 @@ func (v *Provider) CreateStatus(_ context.Context, event *info.Event, statusopts
                 statusopts.Text != "" &amp;&amp;
                 (eventType == triggertype.PullRequest || event.TriggerTarget == triggertype.PullRequest) </span><span class="cov8" title="1">{
                 onPr := ""
-                if statusopts.OriginalPipelineRunName != "" </span><span class="cov0" title="0">{
+                if statusopts.OriginalPipelineRunName != "" </span><span class="cov8" title="1">{
                         onPr = "/" + statusopts.OriginalPipelineRunName
                 }</span>
                 <span class="cov8" title="1">_, err = v.Client().Repositories.PullRequests.AddComment(
