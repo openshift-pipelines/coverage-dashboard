@@ -229,7 +229,7 @@
 				
 				<option value="file86">github.com/openshift-pipelines/pipelines-as-code/pkg/params/settings/config.go (84.4%)</option>
 				
-				<option value="file87">github.com/openshift-pipelines/pipelines-as-code/pkg/params/settings/default.go (100.0%)</option>
+				<option value="file87">github.com/openshift-pipelines/pipelines-as-code/pkg/params/settings/default.go (97.3%)</option>
 				
 				<option value="file88">github.com/openshift-pipelines/pipelines-as-code/pkg/params/triggertype/types.go (0.0%)</option>
 				
@@ -10199,9 +10199,13 @@ func startWithHTTPorHTTPS(url string) error <span class="cov8" title="1">{
 		<pre class="file" id="file87" style="display: none">package settings
 
 import (
+        "context"
         "fmt"
+        "net/http"
         "net/url"
+        "strings"
         "sync"
+        "time"
 
         hubtypes "github.com/openshift-pipelines/pipelines-as-code/pkg/hub/vars"
         "go.uber.org/zap"
@@ -10218,7 +10222,10 @@ func getHubCatalogs(logger *zap.SugaredLogger, catalogs *sync.Map, config map[st
 
         <span class="cov8" title="1">if hubType, ok := config[HubCatalogTypeKey]; !ok || hubType == "" </span><span class="cov8" title="1">{
                 config[HubCatalogTypeKey] = hubtypes.ArtifactHubType
-        }</span> else<span class="cov8" title="1"> if hubType != hubtypes.ArtifactHubType &amp;&amp; hubType != hubtypes.TektonHubType </span><span class="cov8" title="1">{
+                if config[HubURLKey] != "" </span><span class="cov8" title="1">{
+                        config[HubCatalogTypeKey] = getHubCatalogTypeViaAPI(config[HubURLKey])
+                }</span>
+        } else<span class="cov8" title="1"> if hubType != hubtypes.ArtifactHubType &amp;&amp; hubType != hubtypes.TektonHubType </span><span class="cov8" title="1">{
                 logger.Warnf("CONFIG: invalid hub type %s, defaulting to %s", hubType, hubtypes.ArtifactHubType)
                 config[HubCatalogTypeKey] = hubtypes.ArtifactHubType
         }</span>
@@ -10302,6 +10309,31 @@ func getHubCatalogs(logger *zap.SugaredLogger, catalogs *sync.Map, config map[st
                 }
         }
         <span class="cov8" title="1">return catalogs</span>
+}
+
+func getHubCatalogTypeViaAPI(hubURL string) string <span class="cov8" title="1">{
+        statsURL := fmt.Sprintf("%s/api/v1/stats", strings.TrimSuffix(hubURL, "/"))
+
+        ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+        defer cancel()
+
+        req, err := http.NewRequestWithContext(ctx, http.MethodGet, statsURL, nil)
+        if err != nil </span><span class="cov0" title="0">{
+                return hubtypes.TektonHubType
+        }</span>
+
+        <span class="cov8" title="1">resp, err := http.DefaultClient.Do(req)
+        if err != nil </span><span class="cov0" title="0">{
+                return hubtypes.TektonHubType
+        }</span>
+        <span class="cov8" title="1">defer resp.Body.Close()
+
+        if resp.StatusCode == http.StatusOK </span><span class="cov8" title="1">{
+                return hubtypes.ArtifactHubType
+        }</span>
+
+        // if the API call fails, return Tekton Hub type
+        <span class="cov8" title="1">return hubtypes.TektonHubType</span>
 }
 </pre>
 		
