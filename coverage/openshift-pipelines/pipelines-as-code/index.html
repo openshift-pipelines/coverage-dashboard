@@ -299,7 +299,7 @@
 				
 				<option value="file121">github.com/openshift-pipelines/pipelines-as-code/pkg/provider/gitlab/detect.go (90.0%)</option>
 				
-				<option value="file122">github.com/openshift-pipelines/pipelines-as-code/pkg/provider/gitlab/gitlab.go (86.9%)</option>
+				<option value="file122">github.com/openshift-pipelines/pipelines-as-code/pkg/provider/gitlab/gitlab.go (87.3%)</option>
 				
 				<option value="file123">github.com/openshift-pipelines/pipelines-as-code/pkg/provider/gitlab/parse_payload.go (83.4%)</option>
 				
@@ -17459,7 +17459,7 @@ func (v *Provider) checkOkToTestCommentFromApprovedMember(ctx context.Context, e
         }
 
         <span class="cov0" title="0">var nextPage int
-        opt := &amp;gitlab.ListMergeRequestDiscussionsOptions{Page: page}
+        opt := &amp;gitlab.ListMergeRequestDiscussionsOptions{Page: page, PerPage: defaultGitlabListOptions.PerPage}
         discussions, resp, err := v.Client().Discussions.ListMergeRequestDiscussions(v.targetProjectID, event.PullRequestNumber, opt)
         if err != nil || len(discussions) == 0 </span><span class="cov0" title="0">{
                 return false, err
@@ -17710,6 +17710,10 @@ type Provider struct {
         cachedChangedFiles *changedfiles.ChangedFiles
 }
 
+var defaultGitlabListOptions = gitlab.ListOptions{
+        PerPage: 100,
+}
+
 func (v *Provider) Client() *gitlab.Client <span class="cov8" title="1">{
         providerMetrics.RecordAPIUsage(
                 v.Logger,
@@ -17741,23 +17745,35 @@ func (v *Provider) CreateComment(_ context.Context, event *info.Event, commit, u
 
         // List comments of the merge request
         <span class="cov8" title="1">if updateMarker != "" </span><span class="cov8" title="1">{
-                comments, _, err := v.Client().Notes.ListMergeRequestNotes(event.TargetProjectID, event.PullRequestNumber, &amp;gitlab.ListMergeRequestNotesOptions{
-                        ListOptions: gitlab.ListOptions{
-                                Page:    1,
-                                PerPage: 100,
-                        },
-                })
-                if err != nil </span><span class="cov0" title="0">{
-                        return err
-                }</span>
+                commentRe := regexp.MustCompile(updateMarker)
+                options := []gitlab.RequestOptionFunc{}
 
-                <span class="cov8" title="1">re := regexp.MustCompile(updateMarker)
-                for _, comment := range comments </span><span class="cov8" title="1">{
-                        if re.MatchString(comment.Body) </span><span class="cov8" title="1">{
-                                _, _, err := v.Client().Notes.UpdateMergeRequestNote(event.TargetProjectID, event.PullRequestNumber, comment.ID, &amp;gitlab.UpdateMergeRequestNoteOptions{
-                                        Body: &amp;commit,
-                                })
+                for </span><span class="cov8" title="1">{
+                        comments, resp, err := v.Client().Notes.ListMergeRequestNotes(event.TargetProjectID, event.PullRequestNumber, &amp;gitlab.ListMergeRequestNotesOptions{ListOptions: defaultGitlabListOptions}, options...)
+                        if err != nil </span><span class="cov0" title="0">{
                                 return err
+                        }</span>
+
+                        <span class="cov8" title="1">for _, comment := range comments </span><span class="cov8" title="1">{
+                                if commentRe.MatchString(comment.Body) </span><span class="cov8" title="1">{
+                                        _, _, err := v.Client().Notes.UpdateMergeRequestNote(event.TargetProjectID, event.PullRequestNumber, comment.ID, &amp;gitlab.UpdateMergeRequestNoteOptions{
+                                                Body: &amp;commit,
+                                        })
+                                        if err != nil </span><span class="cov0" title="0">{
+                                                return fmt.Errorf("unable to update merge request note: %w", err)
+                                        }</span>
+                                        <span class="cov8" title="1">return nil</span>
+                                }
+                        }
+
+                        // Exit the loop when we've seen all pages.
+                        <span class="cov8" title="1">if resp.NextLink == "" </span><span class="cov8" title="1">{
+                                break</span>
+                        }
+
+                        // Otherwise, set param to query the next page
+                        <span class="cov8" title="1">options = []gitlab.RequestOptionFunc{
+                                gitlab.WithKeysetPaginationParameters(resp.NextLink),
                         }</span>
                 }
         }
@@ -17765,8 +17781,10 @@ func (v *Provider) CreateComment(_ context.Context, event *info.Event, commit, u
         <span class="cov8" title="1">_, _, err := v.Client().Notes.CreateMergeRequestNote(event.TargetProjectID, event.PullRequestNumber, &amp;gitlab.CreateMergeRequestNoteOptions{
                 Body: &amp;commit,
         })
-
-        return err</span>
+        if err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("unable to create merge request note: %w", err)
+        }</span>
+        <span class="cov8" title="1">return nil</span>
 }
 
 // CheckPolicyAllowing TODO: Implement ME.
@@ -18028,7 +18046,7 @@ func (v *Provider) GetTektonDir(_ context.Context, event *info.Event, path, prov
                 ListOptions: gitlab.ListOptions{
                         OrderBy:    "id",
                         Pagination: "keyset",
-                        PerPage:    20,
+                        PerPage:    defaultGitlabListOptions.PerPage,
                         Sort:       "asc",
                 },
         }
@@ -18166,7 +18184,7 @@ func (v *Provider) fetchChangedFiles(_ context.Context, runevent *info.Event) (c
                         ListOptions: gitlab.ListOptions{
                                 OrderBy:    "id",
                                 Pagination: "keyset",
-                                PerPage:    20,
+                                PerPage:    defaultGitlabListOptions.PerPage,
                                 Sort:       "asc",
                         },
                 }
@@ -18201,28 +18219,43 @@ func (v *Provider) fetchChangedFiles(_ context.Context, runevent *info.Event) (c
                         }
 
                         // Otherwise, set param to query the next page
-                        <span class="cov0" title="0">options = []gitlab.RequestOptionFunc{
+                        <span class="cov8" title="1">options = []gitlab.RequestOptionFunc{
                                 gitlab.WithKeysetPaginationParameters(resp.NextLink),
                         }</span>
                 }
         case triggertype.Push:<span class="cov8" title="1">
-                pushChanges, _, err := v.Client().Commits.GetCommitDiff(v.sourceProjectID, runevent.SHA, &amp;gitlab.GetCommitDiffOptions{})
-                if err != nil </span><span class="cov0" title="0">{
-                        return changedfiles.ChangedFiles{}, err
-                }</span>
-                <span class="cov8" title="1">for _, change := range pushChanges </span><span class="cov8" title="1">{
-                        changedFiles.All = append(changedFiles.All, change.NewPath)
-                        if change.NewFile </span><span class="cov8" title="1">{
-                                changedFiles.Added = append(changedFiles.Added, change.NewPath)
+                options := gitlab.GetCommitDiffOptions{ListOptions: defaultGitlabListOptions}
+                pageOpts := []gitlab.RequestOptionFunc{}
+
+                for </span><span class="cov8" title="1">{
+                        pushChanges, resp, err := v.Client().Commits.GetCommitDiff(v.sourceProjectID, runevent.SHA, &amp;options, pageOpts...)
+                        if err != nil </span><span class="cov0" title="0">{
+                                return changedfiles.ChangedFiles{}, err
                         }</span>
-                        <span class="cov8" title="1">if change.DeletedFile </span><span class="cov8" title="1">{
-                                changedFiles.Deleted = append(changedFiles.Deleted, change.NewPath)
-                        }</span>
-                        <span class="cov8" title="1">if !change.RenamedFile &amp;&amp; !change.DeletedFile &amp;&amp; !change.NewFile </span><span class="cov8" title="1">{
-                                changedFiles.Modified = append(changedFiles.Modified, change.NewPath)
-                        }</span>
-                        <span class="cov8" title="1">if change.RenamedFile </span><span class="cov8" title="1">{
-                                changedFiles.Renamed = append(changedFiles.Renamed, change.NewPath)
+
+                        <span class="cov8" title="1">for _, change := range pushChanges </span><span class="cov8" title="1">{
+                                changedFiles.All = append(changedFiles.All, change.NewPath)
+                                if change.NewFile </span><span class="cov8" title="1">{
+                                        changedFiles.Added = append(changedFiles.Added, change.NewPath)
+                                }</span>
+                                <span class="cov8" title="1">if change.DeletedFile </span><span class="cov8" title="1">{
+                                        changedFiles.Deleted = append(changedFiles.Deleted, change.NewPath)
+                                }</span>
+                                <span class="cov8" title="1">if !change.RenamedFile &amp;&amp; !change.DeletedFile &amp;&amp; !change.NewFile </span><span class="cov8" title="1">{
+                                        changedFiles.Modified = append(changedFiles.Modified, change.NewPath)
+                                }</span>
+                                <span class="cov8" title="1">if change.RenamedFile </span><span class="cov8" title="1">{
+                                        changedFiles.Renamed = append(changedFiles.Renamed, change.NewPath)
+                                }</span>
+                        }
+
+                        <span class="cov8" title="1">if resp.NextLink == "" </span><span class="cov8" title="1">{
+                                // Exit the loop when we've seen all pages.
+                                break</span>
+                        }
+                        // Otherwise, set param to query the next page
+                        <span class="cov8" title="1">pageOpts = []gitlab.RequestOptionFunc{
+                                gitlab.WithKeysetPaginationParameters(resp.NextLink),
                         }</span>
                 }
         default:<span class="cov0" title="0"></span>

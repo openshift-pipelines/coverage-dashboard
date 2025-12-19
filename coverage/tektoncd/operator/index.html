@@ -117,7 +117,7 @@
 				
 				<option value="file30">github.com/tektoncd/operator/pkg/apis/operator/v1alpha1/tektoninstallerset_lifecycle.go (54.5%)</option>
 				
-				<option value="file31">github.com/tektoncd/operator/pkg/apis/operator/v1alpha1/tektonpipeline_defaults.go (89.9%)</option>
+				<option value="file31">github.com/tektoncd/operator/pkg/apis/operator/v1alpha1/tektonpipeline_defaults.go (89.7%)</option>
 				
 				<option value="file32">github.com/tektoncd/operator/pkg/apis/operator/v1alpha1/tektonpipeline_lifecycle.go (50.0%)</option>
 				
@@ -449,7 +449,7 @@
 				
 				<option value="file196">github.com/tektoncd/operator/pkg/reconciler/shared/tektonconfig/upgrade/post_upgrade.go (0.0%)</option>
 				
-				<option value="file197">github.com/tektoncd/operator/pkg/reconciler/shared/tektonconfig/upgrade/pre_upgrade.go (70.1%)</option>
+				<option value="file197">github.com/tektoncd/operator/pkg/reconciler/shared/tektonconfig/upgrade/pre_upgrade.go (68.8%)</option>
 				
 				<option value="file198">github.com/tektoncd/operator/pkg/reconciler/shared/tektonconfig/upgrade/upgrade.go (84.4%)</option>
 				
@@ -4274,10 +4274,9 @@ import (
 
 const (
         // openshift specific
-        enableMetricsKey                         = "enableMetrics"
-        enableMetricsDefaultValue                = "true"
-        openshiftDefaultDisableAffinityAssistant = true
-        ospDefaultSA                             = "pipeline"
+        enableMetricsKey          = "enableMetrics"
+        enableMetricsDefaultValue = "true"
+        ospDefaultSA              = "pipeline"
 )
 
 func (tp *TektonPipeline) SetDefaults(ctx context.Context) <span class="cov8" title="1">{
@@ -4328,6 +4327,10 @@ func (p *Pipeline) setDefaults() <span class="cov8" title="1">{
 
         // Deprecated: set to nil, remove in further release
         <span class="cov8" title="1">p.ScopeWhenExpressionsToTask = nil
+
+        // Deprecated: disable-affinity-assistant is removed from pipeline component
+        // set to nil, remove in release-v0.80.x
+        p.DisableAffinityAssistant = nil
 
         if p.EnforceNonfalsifiability == "" </span><span class="cov8" title="1">{
                 p.EnforceNonfalsifiability = config.DefaultEnforceNonfalsifiability
@@ -4417,10 +4420,6 @@ func (p *Pipeline) setDefaults() <span class="cov8" title="1">{
 func (p *Pipeline) openshiftDefaulting() <span class="cov8" title="1">{
         if p.DefaultServiceAccount == "" </span><span class="cov8" title="1">{
                 p.DefaultServiceAccount = ospDefaultSA
-        }</span>
-
-        <span class="cov8" title="1">if p.DisableAffinityAssistant == nil </span><span class="cov8" title="1">{
-                p.DisableAffinityAssistant = ptr.Bool(openshiftDefaultDisableAffinityAssistant)
         }</span>
 
         // Add params with default values if not defined by user
@@ -4675,7 +4674,6 @@ type Pipeline struct {
 
 // PipelineProperties defines customizable flags for Pipeline Component.
 type PipelineProperties struct {
-        DisableAffinityAssistant                 *bool  `json:"disable-affinity-assistant,omitempty"`
         DisableCredsInit                         *bool  `json:"disable-creds-init,omitempty"`
         AwaitSidecarReadiness                    *bool  `json:"await-sidecar-readiness,omitempty"`
         RunningInEnvironmentWithInjectedSidecars *bool  `json:"running-in-environment-with-injected-sidecars,omitempty"`
@@ -4700,6 +4698,12 @@ type PipelineProperties struct {
 
         // ScopeWhenExpressionsToTask is deprecated and never used.
         ScopeWhenExpressionsToTask *bool `json:"scope-when-expressions-to-task,omitempty"`
+
+        // Deprecated: DisableAffinityAssistant is deprecated and no longer used.
+        // This field is removed from pipeline component.
+        // Keeping here to maintain API compatibility during upgrades.
+        // TODO: Remove this field in release-v0.80.x
+        DisableAffinityAssistant *bool `json:"disable-affinity-assistant,omitempty"`
 
         EnforceNonfalsifiability  string `json:"enforce-nonfalsifiability,omitempty"`
         EnableKeepPodOnCancel     *bool  `json:"keep-pod-on-cancel,omitempty"`
@@ -32197,6 +32201,37 @@ func updateOpenShiftPipelinesAsCodeCR(ctx context.Context, logger *zap.SugaredLo
 
         <span class="cov8" title="1">return nil</span>
 }
+
+// removeDeprecatedDisableAffinityAssistant removes the deprecated DisableAffinityAssistant field from tektonConfig CR spec during pre upgrade
+// TODO: Remove this upgrade function in the release-v0.80.x
+func removeDeprecatedDisableAffinityAssistant(ctx context.Context, logger *zap.SugaredLogger, k8sClient kubernetes.Interface, operatorClient versioned.Interface, restConfig *rest.Config) error <span class="cov8" title="1">{
+        // use merge patch to remove the deprecated field from the stored CR
+        patch := map[string]interface{}{
+                "spec": map[string]interface{}{
+                        "pipeline": map[string]interface{}{
+                                "disable-affinity-assistant": nil,
+                        },
+                },
+        }
+
+        patchBytes, err := json.Marshal(patch)
+        if err != nil </span><span class="cov0" title="0">{
+                logger.Errorf("failed to marshal patch payload: %v", err)
+                return err
+        }</span>
+
+        <span class="cov8" title="1">_, err = operatorClient.OperatorV1alpha1().TektonConfigs().Patch(ctx, v1alpha1.ConfigResourceName, types.MergePatchType, patchBytes, metav1.PatchOptions{})
+        if err != nil </span><span class="cov0" title="0">{
+                if apierrs.IsNotFound(err) </span><span class="cov0" title="0">{
+                        return nil
+                }</span>
+                <span class="cov0" title="0">logger.Debugw("patch to remove disable-affinity-assistant field returned error (field may not exist)", "error", err)
+                return nil</span>
+        }
+
+        <span class="cov8" title="1">logger.Info("Successfully removed deprecated disable-affinity-assistant field from TektonConfig CR")
+        return nil</span>
+}
 </pre>
 		
 		<pre class="file" id="file198" style="display: none">/*
@@ -32238,7 +32273,8 @@ var (
                 // Todo: Remove the deleteTektonResultsTLSSecret upgrade function in next operator release
                 deleteTektonResultsTLSSecret, // upgrade #5: deletes default tekton results tls certificate
                 // TODO: Remove the preUpgradeTektonPruner upgrade function in next operator release
-                preUpgradeTektonPruner, // upgrade #5: pre upgrade tekton pruner
+                preUpgradeTektonPruner,                   // upgrade #5: pre upgrade tekton pruner
+                removeDeprecatedDisableAffinityAssistant, // upgrade #6: remove deprecated DisableAffinityAssistant field from pipeline config
         }
 
         // post upgrade functions

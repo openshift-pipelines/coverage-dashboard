@@ -93,7 +93,7 @@
 				
 				<option value="file18">github.com/tektoncd/pipeline/pkg/apis/pipeline/pod/affinity_assitant_template.go (0.0%)</option>
 				
-				<option value="file19">github.com/tektoncd/pipeline/pkg/apis/pipeline/pod/template.go (88.3%)</option>
+				<option value="file19">github.com/tektoncd/pipeline/pkg/apis/pipeline/pod/template.go (88.6%)</option>
 				
 				<option value="file20">github.com/tektoncd/pipeline/pkg/apis/pipeline/v1/artifact_types.go (95.7%)</option>
 				
@@ -445,7 +445,7 @@
 				
 				<option value="file194">github.com/tektoncd/pipeline/pkg/reconciler/pipelinerun/resources/pipelinerunstate.go (97.3%)</option>
 				
-				<option value="file195">github.com/tektoncd/pipeline/pkg/reconciler/pipelinerun/resources/resultrefresolution.go (98.4%)</option>
+				<option value="file195">github.com/tektoncd/pipeline/pkg/reconciler/pipelinerun/resources/resultrefresolution.go (99.2%)</option>
 				
 				<option value="file196">github.com/tektoncd/pipeline/pkg/reconciler/pipelinerun/resources/validate_dependencies.go (100.0%)</option>
 				
@@ -3355,7 +3355,7 @@ type Template struct {
         // If not specified, the pod priority will be default or zero if there is no
         // default.
         // +optional
-        PriorityClassName *string `json:"priorityClassName,omitempty" protobuf:"bytes,7,opt,name=priorityClassName"`
+        PriorityClassName *string `json:"priorityClassName,omitempty" protobuf:"bytes,8,opt,name=priorityClassName"`
         // SchedulerName specifies the scheduler to be used to dispatch the Pod
         // +optional
         SchedulerName string `json:"schedulerName,omitempty"`
@@ -3374,6 +3374,18 @@ type Template struct {
         // HostNetwork specifies whether the pod may use the node network namespace
         // +optional
         HostNetwork bool `json:"hostNetwork,omitempty"`
+
+        // HostUsers indicates whether the pod will use the host's user namespace.
+        // Optional: Default to true.
+        // If set to true or not present, the pod will be run in the host user namespace, useful
+        // for when the pod needs a feature only available to the host user namespace, such as
+        // loading a kernel module with CAP_SYS_MODULE.
+        // When set to false, a new user namespace is created for the pod. Setting false
+        // is useful to mitigating container breakout vulnerabilities such as allowing
+        // containers to run as root without their user having root privileges on the host.
+        // This field depends on the kubernetes feature gate UserNamespacesSupport being enabled.
+        // +optional
+        HostUsers *bool `json:"hostUsers,omitempty"`
 
         // TopologySpreadConstraints controls how Pods are spread across your cluster among
         // failure-domains such as regions, zones, nodes, and other user-defined topology domains.
@@ -3471,6 +3483,9 @@ func MergePodTemplateWithDefault(tpl, defaultTpl *PodTemplate) *PodTemplate <spa
                 }</span>
                 <span class="cov8" title="1">if !tpl.HostNetwork &amp;&amp; defaultTpl.HostNetwork </span><span class="cov8" title="1">{
                         tpl.HostNetwork = true
+                }</span>
+                <span class="cov8" title="1">if tpl.HostUsers == nil </span><span class="cov8" title="1">{
+                        tpl.HostUsers = defaultTpl.HostUsers
                 }</span>
                 <span class="cov8" title="1">if tpl.TopologySpreadConstraints == nil </span><span class="cov8" title="1">{
                         tpl.TopologySpreadConstraints = defaultTpl.TopologySpreadConstraints
@@ -31483,6 +31498,7 @@ func (b *Builder) Build(ctx context.Context, taskRun *v1.TaskRun, taskSpec v1.Ta
                         AutomountServiceAccountToken: podTemplate.AutomountServiceAccountToken,
                         SchedulerName:                podTemplate.SchedulerName,
                         HostNetwork:                  podTemplate.HostNetwork,
+                        HostUsers:                    podTemplate.HostUsers,
                         DNSPolicy:                    dnsPolicy,
                         DNSConfig:                    podTemplate.DNSConfig,
                         EnableServiceLinks:           podTemplate.EnableServiceLinks,
@@ -40417,7 +40433,7 @@ func removeDup(refs ResolvedResultRefs) ResolvedResultRefs <span class="cov8" ti
                 order = append(order, key)
         }</span>
         <span class="cov8" title="1">sort.Slice(order, func(i, j int) bool </span><span class="cov8" title="1">{
-                if order[i].PipelineTask &gt; order[j].PipelineTask </span><span class="cov0" title="0">{
+                if order[i].PipelineTask &gt; order[j].PipelineTask </span><span class="cov8" title="1">{
                         return false
                 }</span>
                 <span class="cov8" title="1">if order[i].Result &gt; order[j].Result </span><span class="cov0" title="0">{
