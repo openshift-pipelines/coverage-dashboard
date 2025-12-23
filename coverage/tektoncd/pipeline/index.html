@@ -395,7 +395,7 @@
 				
 				<option value="file169">github.com/tektoncd/pipeline/pkg/pod/security_context_config.go (100.0%)</option>
 				
-				<option value="file170">github.com/tektoncd/pipeline/pkg/pod/status.go (92.4%)</option>
+				<option value="file170">github.com/tektoncd/pipeline/pkg/pod/status.go (92.2%)</option>
 				
 				<option value="file171">github.com/tektoncd/pipeline/pkg/pod/workingdir_init.go (94.1%)</option>
 				
@@ -471,7 +471,7 @@
 				
 				<option value="file207">github.com/tektoncd/pipeline/pkg/reconciler/taskrun/resources/validate_params.go (97.2%)</option>
 				
-				<option value="file208">github.com/tektoncd/pipeline/pkg/reconciler/taskrun/taskrun.go (86.5%)</option>
+				<option value="file208">github.com/tektoncd/pipeline/pkg/reconciler/taskrun/taskrun.go (86.4%)</option>
 				
 				<option value="file209">github.com/tektoncd/pipeline/pkg/reconciler/taskrun/tracing.go (90.9%)</option>
 				
@@ -10542,6 +10542,10 @@ const (
         TaskRunReasonResolvingStepActionRef = "ResolvingStepActionRef"
         // TaskRunReasonImagePullFailed is the reason set when the step of a task fails due to image not being pulled
         TaskRunReasonImagePullFailed TaskRunReason = "TaskRunImagePullFailed"
+        // TaskRunReasonCreateContainerConfigError is the reason set when the step of a task fails due to config error (e.g., missing ConfigMap or Secret)
+        TaskRunReasonCreateContainerConfigError TaskRunReason = "CreateContainerConfigError"
+        // TaskRunReasonPodCreationFailed is the reason set when the pod backing the TaskRun fails to be created (e.g., CreateContainerError)
+        TaskRunReasonPodCreationFailed TaskRunReason = "PodCreationFailed"
         // TaskRunReasonResultLargerThanAllowedLimit is the reason set when one of the results exceeds its maximum allowed limit of 1 KB
         TaskRunReasonResultLargerThanAllowedLimit TaskRunReason = "TaskRunResultLargerThanAllowedLimit"
         // TaskRunReasonStopSidecarFailed indicates that the sidecar is not properly stopped.
@@ -32962,28 +32966,43 @@ func IsPodExceedingNodeResources(pod *corev1.Pod) bool <span class="cov8" title=
         <span class="cov8" title="1">return false</span>
 }
 
-// isPodHitConfigError returns true if the Pod's status undicates there are config error raised
-func isPodHitConfigError(pod *corev1.Pod) bool <span class="cov8" title="1">{
-        for _, containerStatus := range pod.Status.ContainerStatuses </span><span class="cov8" title="1">{
-                if containerStatus.State.Waiting != nil &amp;&amp; containerStatus.State.Waiting.Reason == ReasonCreateContainerConfigError </span><span class="cov8" title="1">{
-                        // for subPath directory creation errors, we want to allow recovery
-                        if strings.Contains(containerStatus.State.Waiting.Message, "failed to create subPath directory") </span><span class="cov0" title="0">{
-                                return false
-                        }</span>
-                        <span class="cov8" title="1">return true</span>
-                }
+// hasContainerWaitingReason checks if any container (init or regular) is waiting with a reason
+// that matches the provided predicate function
+func hasContainerWaitingReason(pod *corev1.Pod, predicate func(corev1.ContainerStateWaiting) bool) bool <span class="cov8" title="1">{
+        // Check init containers first
+        for _, containerStatus := range pod.Status.InitContainerStatuses </span><span class="cov8" title="1">{
+                if containerStatus.State.Waiting != nil &amp;&amp; predicate(*containerStatus.State.Waiting) </span><span class="cov0" title="0">{
+                        return true
+                }</span>
         }
-        <span class="cov8" title="1">return false</span>
-}
-
-// isPullImageError returns true if the Pod's status indicates there are any error when pulling image
-func isPullImageError(pod *corev1.Pod) bool <span class="cov8" title="1">{
-        for _, containerStatus := range pod.Status.ContainerStatuses </span><span class="cov8" title="1">{
-                if containerStatus.State.Waiting != nil &amp;&amp; isImageErrorReason(containerStatus.State.Waiting.Reason) </span><span class="cov8" title="1">{
+        // Check regular containers
+        <span class="cov8" title="1">for _, containerStatus := range pod.Status.ContainerStatuses </span><span class="cov8" title="1">{
+                if containerStatus.State.Waiting != nil &amp;&amp; predicate(*containerStatus.State.Waiting) </span><span class="cov8" title="1">{
                         return true
                 }</span>
         }
         <span class="cov8" title="1">return false</span>
+}
+
+// isPodHitConfigError returns true if the Pod's status indicates there are config error raised
+func isPodHitConfigError(pod *corev1.Pod) bool <span class="cov8" title="1">{
+        return hasContainerWaitingReason(pod, func(waiting corev1.ContainerStateWaiting) bool </span><span class="cov8" title="1">{
+                if waiting.Reason != ReasonCreateContainerConfigError </span><span class="cov8" title="1">{
+                        return false
+                }</span>
+                // for subPath directory creation errors, we want to allow recovery
+                <span class="cov8" title="1">if strings.Contains(waiting.Message, "failed to create subPath directory") </span><span class="cov0" title="0">{
+                        return false
+                }</span>
+                <span class="cov8" title="1">return true</span>
+        })
+}
+
+// isPullImageError returns true if the Pod's status indicates there are any error when pulling image
+func isPullImageError(pod *corev1.Pod) bool <span class="cov8" title="1">{
+        return hasContainerWaitingReason(pod, func(waiting corev1.ContainerStateWaiting) bool </span><span class="cov8" title="1">{
+                return isImageErrorReason(waiting.Reason)
+        }</span>)
 }
 
 func isImageErrorReason(reason string) bool <span class="cov8" title="1">{
@@ -43393,16 +43412,26 @@ type Reconciler struct {
         tracerProvider           trace.TracerProvider
 }
 
-const ImagePullBackOff = "ImagePullBackOff"
+const (
+        ImagePullBackOff           = "ImagePullBackOff"
+        InvalidImageName           = "InvalidImageName"           // Invalid image reference
+        CreateContainerConfigError = "CreateContainerConfigError" // Missing ConfigMap/Secret, invalid env vars, etc.
+        CreateContainerError       = "CreateContainerError"       // Other container creation failures
+        ErrImagePull               = "ErrImagePull"               // Initial image pull failure
+)
 
 var (
         // Check that our Reconciler implements taskrunreconciler.Interface
         _ taskrunreconciler.Interface = (*Reconciler)(nil)
 
         // Pod failure reasons that trigger failure of the TaskRun
+        // Note: ErrImagePull is intentionally not included as it's a transient state
+        // that Kubernetes will automatically retry before transitioning to ImagePullBackOff
         podFailureReasons = map[string]struct{}{
-                ImagePullBackOff:   {},
-                "InvalidImageName": {},
+                ImagePullBackOff:           {},
+                InvalidImageName:           {},
+                CreateContainerConfigError: {},
+                CreateContainerError:       {},
         }
 )
 
@@ -43543,66 +43572,101 @@ func (c *Reconciler) ReconcileKind(ctx context.Context, tr *v1.TaskRun) pkgrecon
 }
 
 func (c *Reconciler) checkPodFailed(ctx context.Context, tr *v1.TaskRun) (bool, v1.TaskRunReason, string) <span class="cov8" title="1">{
-        imagePullBackOffTimeoutPodConditions := []string{string(corev1.PodInitialized), "PodReadyToStartContainers"}
         for _, step := range tr.Status.Steps </span><span class="cov8" title="1">{
-                if step.Waiting != nil </span><span class="cov8" title="1">{
-                        if _, found := podFailureReasons[step.Waiting.Reason]; found </span><span class="cov8" title="1">{
-                                if step.Waiting.Reason == ImagePullBackOff </span><span class="cov8" title="1">{
-                                        imagePullBackOffTimeOut := config.FromContextOrDefaults(ctx).Defaults.DefaultImagePullBackOffTimeout
-                                        // only attempt to recover from the imagePullBackOff if specified
-                                        if imagePullBackOffTimeOut.Seconds() != 0 </span><span class="cov8" title="1">{
-                                                p, err := c.KubeClientSet.CoreV1().Pods(tr.Namespace).Get(ctx, tr.Status.PodName, metav1.GetOptions{})
-                                                if err != nil </span><span class="cov8" title="1">{
-                                                        message := fmt.Sprintf(`the step %q in TaskRun %q failed to pull the image %q and the pod with error: "%s."`, step.Name, tr.Name, step.ImageID, err)
-                                                        return true, v1.TaskRunReasonImagePullFailed, message
-                                                }</span>
-                                                <span class="cov8" title="1">for _, condition := range p.Status.Conditions </span><span class="cov8" title="1">{
-                                                        // check the pod condition to get the time when the pod was ready to start containers / initialized.
-                                                        // keep trying until the pod schedule time has exceeded the specified imagePullBackOff timeout duration
-                                                        if slices.Contains(imagePullBackOffTimeoutPodConditions, string(condition.Type)) </span><span class="cov8" title="1">{
-                                                                if c.Clock.Since(condition.LastTransitionTime.Time) &lt; imagePullBackOffTimeOut </span><span class="cov8" title="1">{
-                                                                        return false, "", ""
-                                                                }</span>
-                                                        }
-                                                }
-                                        }
-                                }
-                                <span class="cov8" title="1">image := step.ImageID
-                                message := fmt.Sprintf(`the step %q in TaskRun %q failed to pull the image %q. The pod errored with the message: "%s."`, step.Name, tr.Name, image, step.Waiting.Message)
-                                return true, v1.TaskRunReasonImagePullFailed, message</span>
-                        }
+                if step.Waiting == nil </span><span class="cov8" title="1">{
+                        continue</span>
                 }
+
+                <span class="cov8" title="1">if _, found := podFailureReasons[step.Waiting.Reason]; !found </span><span class="cov0" title="0">{
+                        continue</span>
+                }
+
+                <span class="cov8" title="1">failed, reason, message := c.checkContainerFailure(
+                        ctx,
+                        tr,
+                        step.Waiting,
+                        step.Name,
+                        step.ImageID,
+                        "step",
+                )
+                if failed </span><span class="cov8" title="1">{
+                        return true, reason, message
+                }</span>
         }
+
         <span class="cov8" title="1">for _, sidecar := range tr.Status.Sidecars </span><span class="cov8" title="1">{
-                if sidecar.Waiting != nil </span><span class="cov8" title="1">{
-                        if _, found := podFailureReasons[sidecar.Waiting.Reason]; found </span><span class="cov8" title="1">{
-                                if sidecar.Waiting.Reason == ImagePullBackOff </span><span class="cov8" title="1">{
-                                        imagePullBackOffTimeOut := config.FromContextOrDefaults(ctx).Defaults.DefaultImagePullBackOffTimeout
-                                        // only attempt to recover from the imagePullBackOff if specified
-                                        if imagePullBackOffTimeOut.Seconds() != 0 </span><span class="cov8" title="1">{
-                                                p, err := c.KubeClientSet.CoreV1().Pods(tr.Namespace).Get(ctx, tr.Status.PodName, metav1.GetOptions{})
-                                                if err != nil </span><span class="cov8" title="1">{
-                                                        message := fmt.Sprintf(`the sidecar %q in TaskRun %q failed to pull the image %q and the pod with error: "%s."`, sidecar.Name, tr.Name, sidecar.ImageID, err)
-                                                        return true, v1.TaskRunReasonImagePullFailed, message
-                                                }</span>
-                                                <span class="cov8" title="1">for _, condition := range p.Status.Conditions </span><span class="cov8" title="1">{
-                                                        // check the pod condition to get the time when the pod was ready to start containers / initialized.
-                                                        // keep trying until the pod schedule time has exceeded the specified imagePullBackOff timeout duration
-                                                        if slices.Contains(imagePullBackOffTimeoutPodConditions, string(condition.Type)) </span><span class="cov8" title="1">{
-                                                                if c.Clock.Since(condition.LastTransitionTime.Time) &lt; imagePullBackOffTimeOut </span><span class="cov8" title="1">{
-                                                                        return false, "", ""
-                                                                }</span>
-                                                        }
-                                                }
-                                        }
+                if sidecar.Waiting == nil </span><span class="cov8" title="1">{
+                        continue</span>
+                }
+
+                <span class="cov8" title="1">if _, found := podFailureReasons[sidecar.Waiting.Reason]; !found </span><span class="cov8" title="1">{
+                        continue</span>
+                }
+
+                <span class="cov8" title="1">failed, reason, message := c.checkContainerFailure(
+                        ctx,
+                        tr,
+                        sidecar.Waiting,
+                        sidecar.Name,
+                        sidecar.ImageID,
+                        "sidecar",
+                )
+                if failed </span><span class="cov8" title="1">{
+                        return true, reason, message
+                }</span>
+        }
+
+        <span class="cov8" title="1">return false, "", ""</span>
+}
+
+func (c *Reconciler) checkContainerFailure(
+        ctx context.Context,
+        tr *v1.TaskRun,
+        waiting *corev1.ContainerStateWaiting,
+        name,
+        imageID,
+        containerType string,
+) (bool, v1.TaskRunReason, string) <span class="cov8" title="1">{
+        if waiting.Reason == ImagePullBackOff </span><span class="cov8" title="1">{
+                imagePullBackOffTimeOut := config.FromContextOrDefaults(ctx).Defaults.DefaultImagePullBackOffTimeout
+                // only attempt to recover from the imagePullBackOff if specified
+                if imagePullBackOffTimeOut.Seconds() != 0 </span><span class="cov8" title="1">{
+                        p, err := c.KubeClientSet.CoreV1().Pods(tr.Namespace).Get(ctx, tr.Status.PodName, metav1.GetOptions{})
+                        if err != nil </span><span class="cov8" title="1">{
+                                message := fmt.Sprintf(`the %s %q in TaskRun %q failed to pull the image %q. Failed to get pod with error: "%s."`, containerType, name, tr.Name, imageID, err)
+                                return true, v1.TaskRunReasonImagePullFailed, message
+                        }</span>
+                        <span class="cov8" title="1">imagePullBackOffTimeoutPodConditions := []string{string(corev1.PodInitialized), "PodReadyToStartContainers"}
+                        for _, condition := range p.Status.Conditions </span><span class="cov8" title="1">{
+                                // check the pod condition to get the time when the pod was ready to start containers / initialized.
+                                // keep trying until the pod schedule time has exceeded the specified imagePullBackOff timeout duration
+                                if slices.Contains(imagePullBackOffTimeoutPodConditions, string(condition.Type)) </span><span class="cov8" title="1">{
+                                        if c.Clock.Since(condition.LastTransitionTime.Time) &lt; imagePullBackOffTimeOut </span><span class="cov8" title="1">{
+                                                return false, "", ""
+                                        }</span>
                                 }
-                                <span class="cov8" title="1">image := sidecar.ImageID
-                                message := fmt.Sprintf(`the sidecar %q in TaskRun %q failed to pull the image %q. The pod errored with the message: "%s."`, sidecar.Name, tr.Name, image, sidecar.Waiting.Message)
-                                return true, v1.TaskRunReasonImagePullFailed, message</span>
                         }
                 }
+                // ImagePullBackOff timeout exceeded or not configured
+                <span class="cov8" title="1">message := fmt.Sprintf(`the %s %q in TaskRun %q failed to pull the image %q. The pod errored with the message: "%s."`, containerType, name, tr.Name, imageID, waiting.Message)
+                return true, v1.TaskRunReasonImagePullFailed, message</span>
         }
-        <span class="cov8" title="1">return false, "", ""</span>
+
+        // Handle CreateContainerConfigError (missing ConfigMap/Secret, invalid env vars, etc.)
+        <span class="cov8" title="1">if waiting.Reason == CreateContainerConfigError </span><span class="cov8" title="1">{
+                message := fmt.Sprintf(`the %s %q in TaskRun %q failed to start. The pod errored with the message: "%s."`, containerType, name, tr.Name, waiting.Message)
+                return true, v1.TaskRunReasonCreateContainerConfigError, message
+        }</span>
+
+        // Handle InvalidImageName (unrecoverable error)
+        <span class="cov8" title="1">if waiting.Reason == InvalidImageName </span><span class="cov8" title="1">{
+                message := fmt.Sprintf(`the %s %q in TaskRun %q failed to pull the image %q. The pod errored with the message: "%s."`, containerType, name, tr.Name, imageID, waiting.Message)
+                return true, v1.TaskRunReasonImagePullFailed, message
+        }</span>
+
+        // Handle CreateContainerError and other generic failures
+        <span class="cov8" title="1">message := fmt.Sprintf(`the %s %q in TaskRun %q failed to start. The pod errored with the message: "%s."`, containerType, name, tr.Name, waiting.Message)
+        return true, v1.TaskRunReasonPodCreationFailed, message</span>
 }
 
 func (c *Reconciler) durationAndCountMetrics(ctx context.Context, tr *v1.TaskRun, beforeCondition *apis.Condition) <span class="cov8" title="1">{
