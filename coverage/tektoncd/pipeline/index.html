@@ -433,7 +433,7 @@
 				
 				<option value="file188">github.com/tektoncd/pipeline/pkg/reconciler/pipelinerun/controller.go (83.3%)</option>
 				
-				<option value="file189">github.com/tektoncd/pipeline/pkg/reconciler/pipelinerun/pipelinerun.go (90.6%)</option>
+				<option value="file189">github.com/tektoncd/pipeline/pkg/reconciler/pipelinerun/pipelinerun.go (90.5%)</option>
 				
 				<option value="file190">github.com/tektoncd/pipeline/pkg/reconciler/pipelinerun/pipelinespec/pipelinespec.go (100.0%)</option>
 				
@@ -445,7 +445,7 @@
 				
 				<option value="file194">github.com/tektoncd/pipeline/pkg/reconciler/pipelinerun/resources/pipelinerunstate.go (97.3%)</option>
 				
-				<option value="file195">github.com/tektoncd/pipeline/pkg/reconciler/pipelinerun/resources/resultrefresolution.go (98.4%)</option>
+				<option value="file195">github.com/tektoncd/pipeline/pkg/reconciler/pipelinerun/resources/resultrefresolution.go (99.2%)</option>
 				
 				<option value="file196">github.com/tektoncd/pipeline/pkg/reconciler/pipelinerun/resources/validate_dependencies.go (100.0%)</option>
 				
@@ -35568,7 +35568,6 @@ import (
         "reflect"
         "regexp"
         "strings"
-        "time"
 
         "k8s.io/apimachinery/pkg/util/wait"
 
@@ -35818,31 +35817,50 @@ func (c *Reconciler) ReconcileKind(ctx context.Context, pr *v1.PipelineRun) pkgr
         }</span>
 
         <span class="cov8" title="1">if pr.Status.StartTime != nil </span><span class="cov8" title="1">{
-                // Compute the time since the task started.
+                // Compute the time since the pipeline started.
                 elapsed := c.Clock.Since(pr.Status.StartTime.Time)
                 // Snooze this resource until the appropriate timeout has elapsed.
-                // but if the timeout has been disabled by setting timeout to 0, we
-                // do not want to subtract from 0, because a negative wait time will
-                // result in the requeue happening essentially immediately
                 timeout := pr.PipelineTimeout(ctx)
                 taskTimeout := pr.TasksTimeout()
-                waitTime := timeout - elapsed
-                if timeout == config.NoTimeoutDuration </span><span class="cov8" title="1">{
-                        waitTime = time.Duration(config.FromContextOrDefaults(ctx).Defaults.DefaultTimeoutMinutes) * time.Minute
-                }</span>
-                <span class="cov8" title="1">if pr.Status.FinallyStartTime == nil &amp;&amp; taskTimeout != nil </span><span class="cov8" title="1">{
-                        waitTime = pr.TasksTimeout().Duration - elapsed
-                        if taskTimeout.Duration == config.NoTimeoutDuration </span><span class="cov0" title="0">{
-                                waitTime = time.Duration(config.FromContextOrDefaults(ctx).Defaults.DefaultTimeoutMinutes) * time.Minute
+
+                // If the main pipeline timeout is NoTimeoutDuration (0), it means no timeout is configured.
+                // This can happen in two ways:
+                // 1. User explicitly set pr.Spec.Timeouts.Pipeline to 0 (wants no timeout)
+                // 2. User didn't set pr.Spec.Timeouts.Pipeline (nil) AND default-timeout-minutes config is "0"
+                // In these cases, check if there are specific task or finally timeouts to enforce.
+                // If not, don't requeue - the reconciler will be triggered by watch events.
+                // Check which phase we're in and handle timeout accordingly
+                if pr.Status.FinallyStartTime != nil </span><span class="cov8" title="1">{
+                        // We're in finally phase - check for finally-specific timeout
+                        if pr.FinallyTimeout() != nil &amp;&amp; pr.FinallyTimeout().Duration != config.NoTimeoutDuration </span><span class="cov8" title="1">{
+                                finallyWaitTime := pr.FinallyTimeout().Duration - c.Clock.Since(pr.Status.FinallyStartTime.Time)
+                                // If pipeline timeout is also set, use the most restrictive timeout
+                                if timeout != config.NoTimeoutDuration </span><span class="cov8" title="1">{
+                                        waitTime := timeout - elapsed
+                                        if finallyWaitTime &lt; waitTime </span><span class="cov0" title="0">{
+                                                return controller.NewRequeueAfter(finallyWaitTime)
+                                        }</span>
+                                        <span class="cov8" title="1">return controller.NewRequeueAfter(waitTime)</span>
+                                }
+                                <span class="cov0" title="0">return controller.NewRequeueAfter(finallyWaitTime)</span>
+                        }
+                        // No finally timeout, use pipeline timeout if set
+                        <span class="cov8" title="1">if timeout != config.NoTimeoutDuration </span><span class="cov8" title="1">{
+                                return controller.NewRequeueAfter(timeout - elapsed)
                         }</span>
-                } else<span class="cov8" title="1"> if pr.Status.FinallyStartTime != nil &amp;&amp; pr.FinallyTimeout() != nil &amp;&amp;
-                        pr.FinallyTimeout().Duration != config.NoTimeoutDuration </span><span class="cov8" title="1">{
-                        finallyWaitTime := pr.FinallyTimeout().Duration - c.Clock.Since(pr.Status.FinallyStartTime.Time)
-                        if finallyWaitTime &lt; waitTime </span><span class="cov0" title="0">{
-                                waitTime = finallyWaitTime
-                        }</span>
+                        <span class="cov0" title="0">return nil</span>
                 }
-                <span class="cov8" title="1">return controller.NewRequeueAfter(waitTime)</span>
+
+                // We're in tasks phase - check for task-specific timeout
+                <span class="cov8" title="1">if taskTimeout != nil &amp;&amp; taskTimeout.Duration != config.NoTimeoutDuration </span><span class="cov8" title="1">{
+                        return controller.NewRequeueAfter(taskTimeout.Duration - elapsed)
+                }</span>
+                // No task timeout, use pipeline timeout if set
+                <span class="cov8" title="1">if timeout != config.NoTimeoutDuration </span><span class="cov8" title="1">{
+                        return controller.NewRequeueAfter(timeout - elapsed)
+                }</span>
+                <span class="cov8" title="1">return nil</span>
+
         }
         <span class="cov8" title="1">return nil</span>
 }
@@ -40452,13 +40470,13 @@ func removeDup(refs ResolvedResultRefs) ResolvedResultRefs <span class="cov8" ti
                 order = append(order, key)
         }</span>
         <span class="cov8" title="1">sort.Slice(order, func(i, j int) bool </span><span class="cov8" title="1">{
-                if order[i].PipelineTask &gt; order[j].PipelineTask </span><span class="cov0" title="0">{
+                if order[i].PipelineTask &gt; order[j].PipelineTask </span><span class="cov8" title="1">{
                         return false
                 }</span>
-                <span class="cov8" title="1">if order[i].Result &gt; order[j].Result </span><span class="cov0" title="0">{
+                <span class="cov8" title="1">if order[i].Result &gt; order[j].Result </span><span class="cov8" title="1">{
                         return false
                 }</span>
-                <span class="cov8" title="1">return true</span>
+                <span class="cov0" title="0">return true</span>
         })
 
         <span class="cov8" title="1">for _, key := range order </span><span class="cov8" title="1">{
@@ -43562,11 +43580,17 @@ func (c *Reconciler) ReconcileKind(ctx context.Context, tr *v1.TaskRun) pkgrecon
                 elapsed := c.Clock.Since(tr.Status.StartTime.Time)
                 // Snooze this resource until the timeout has elapsed.
                 timeout := tr.GetTimeout(ctx)
-                waitTime := timeout - elapsed
+                // If timeout is NoTimeoutDuration (0), it means no timeout is configured.
+                // This can happen in two ways:
+                // 1. User explicitly set tr.Spec.Timeout.Duration to 0 (wants no timeout)
+                // 2. User didn't set tr.Spec.Timeout (nil) AND default-timeout-minutes config is "0"
+                // In both cases, we should not requeue based on timeout. The reconciler will
+                // still be triggered appropriately by pod watch events when the TaskRun changes.
                 if timeout == config.NoTimeoutDuration </span><span class="cov8" title="1">{
-                        waitTime = time.Duration(config.FromContextOrDefaults(ctx).Defaults.DefaultTimeoutMinutes) * time.Minute
+                        return nil
                 }</span>
-                <span class="cov8" title="1">return controller.NewRequeueAfter(waitTime)</span>
+                <span class="cov8" title="1">waitTime := timeout - elapsed
+                return controller.NewRequeueAfter(waitTime)</span>
         }
         <span class="cov0" title="0">return nil</span>
 }

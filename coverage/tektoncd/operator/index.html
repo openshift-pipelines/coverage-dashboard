@@ -125,7 +125,7 @@
 				
 				<option value="file34">github.com/tektoncd/operator/pkg/apis/operator/v1alpha1/tektonpipeline_validation.go (81.2%)</option>
 				
-				<option value="file35">github.com/tektoncd/operator/pkg/apis/operator/v1alpha1/tektonpruner_defaults.go (75.0%)</option>
+				<option value="file35">github.com/tektoncd/operator/pkg/apis/operator/v1alpha1/tektonpruner_defaults.go (83.3%)</option>
 				
 				<option value="file36">github.com/tektoncd/operator/pkg/apis/operator/v1alpha1/tektonpruner_lifecycle.go (77.8%)</option>
 				
@@ -4918,6 +4918,8 @@ package v1alpha1
 
 import (
         "context"
+
+        "github.com/tektoncd/pruner/pkg/config"
 )
 
 var DefaultPrunerDisabled = true
@@ -4930,7 +4932,10 @@ func (p *Pruner) SetDefaults() <span class="cov8" title="1">{
         if p.Disabled == nil </span><span class="cov8" title="1">{
                 p.Disabled = &amp;DefaultPrunerDisabled
         }</span>
-        <span class="cov8" title="1">p.GlobalConfig.SetDefaults()</span>
+        <span class="cov8" title="1">if p.GlobalConfig == nil </span><span class="cov8" title="1">{
+                p.GlobalConfig = &amp;config.GlobalConfig{}
+                p.GlobalConfig.SetDefaults()
+        }</span>
 }
 </pre>
 		
@@ -5136,7 +5141,7 @@ type TektonPruner struct {
 }
 
 type TektonPrunerConfig struct {
-        GlobalConfig config.GlobalConfig `json:"global-config"`
+        GlobalConfig *config.GlobalConfig `json:"global-config"`
 }
 
 type Pruner struct {
@@ -5262,7 +5267,7 @@ func (p *Pruner) validate(path string) *apis.FieldError <span class="cov8" title
         // Use the new ValidateGlobalConfig function from pruner package
         // This validates the GlobalConfig struct directly without ConfigMap conversion
         // This is the recommended approach for operator CRDs as documented in pruner PR #57
-        <span class="cov8" title="1">if err := config.ValidateGlobalConfig(&amp;p.TektonPrunerConfig.GlobalConfig); err != nil </span><span class="cov8" title="1">{
+        <span class="cov8" title="1">if err := config.ValidateGlobalConfig(p.TektonPrunerConfig.GlobalConfig); err != nil </span><span class="cov8" title="1">{
                 return apis.ErrGeneric(
                         fmt.Sprintf("pruner config validation failed: %v", err),
                         path+".global-config",

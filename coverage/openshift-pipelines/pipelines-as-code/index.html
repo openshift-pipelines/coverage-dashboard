@@ -303,7 +303,7 @@
 				
 				<option value="file123">github.com/openshift-pipelines/pipelines-as-code/pkg/provider/gitlab/parse_payload.go (83.4%)</option>
 				
-				<option value="file124">github.com/openshift-pipelines/pipelines-as-code/pkg/provider/gitlab/task.go (59.5%)</option>
+				<option value="file124">github.com/openshift-pipelines/pipelines-as-code/pkg/provider/gitlab/task.go (95.9%)</option>
 				
 				<option value="file125">github.com/openshift-pipelines/pipelines-as-code/pkg/provider/metrics/metrics.go (80.0%)</option>
 				
@@ -11901,6 +11901,17 @@ func (p *Policy) checkAllowed(ctx context.Context, tType triggertype.Trigger) (R
         <span class="cov8" title="1">return ResultDisallowed, fmt.Sprintf("policy check: %s, %s", string(tType), reason)</span>
 }
 
+// IsAllowed determines if a given event trigger is permitted based on repository policy settings and OWNERS file.
+//
+// The function first checks if a policy is set for the repository and if the event trigger type is allowed by the policy.
+// - If allowed by policy, it emits an informational event and returns ResultAllowed.
+// - If disallowed by policy, it checks if the sender is allowed via the OWNERS file:
+//   - If allowed via OWNERS, it emits an informational event and returns ResultAllowed.
+//   - If not allowed, it emits a disallowed event and returns ResultDisallowed with a reason.
+//
+// - If no policy is set, it returns ResultNotSet.
+//
+// This function ensures that policy settings take precedence, but fallback to OWNERS file permissions if policy disallows the event.
 func (p *Policy) IsAllowed(ctx context.Context, tType triggertype.Trigger) (Result, string) <span class="cov8" title="1">{
         var reason string
         policyRes, reason := p.checkAllowed(ctx, tType)
@@ -18622,15 +18633,18 @@ func isZeroSHA(sha string) bool <span class="cov8" title="1">{
 
 import (
         "context"
+        "errors"
         "fmt"
         "net/url"
         "regexp"
 
         "github.com/openshift-pipelines/pipelines-as-code/pkg/params/info"
         "github.com/openshift-pipelines/pipelines-as-code/pkg/provider"
+        gl "gitlab.com/gitlab-org/api/client-go"
 )
 
 type gitLabInfo struct {
+        Scheme      string
         Host        string
         GroupOrUser string
         Repository  string
@@ -18649,7 +18663,7 @@ func extractGitLabInfo(gitlabURL string) (*gitLabInfo, error) <span class="cov8"
         <span class="cov8" title="1">re := regexp.MustCompile(`^/([^/]+(?:/[^/]+)*)/([^/]+)/-/blob/([^/]+)(/.*)?|^/([^/]+(?:/[^/]+)*)/([^/]+)/-/raw/([^/]+)(/.*)?`)
         matches := re.FindStringSubmatch(parsedURL.Path)
 
-        if len(matches) == 0 </span><span class="cov0" title="0">{
+        if len(matches) == 0 </span><span class="cov8" title="1">{
                 return nil, fmt.Errorf("URL does not match the expected GitLab pattern")
         }</span>
 
@@ -18675,6 +18689,7 @@ func extractGitLabInfo(gitlabURL string) (*gitLabInfo, error) <span class="cov8"
         }
 
         <span class="cov8" title="1">return &amp;gitLabInfo{
+                Scheme:      parsedURL.Scheme,
                 Host:        parsedURL.Host,
                 GroupOrUser: groupOrUser,
                 Repository:  repoName,
@@ -18685,24 +18700,51 @@ func extractGitLabInfo(gitlabURL string) (*gitLabInfo, error) <span class="cov8"
 
 // GetTaskURI if we are getting a URL from the same URL where the provider is,
 // it means we can try to get the file with the provider token.
-func (v *Provider) GetTaskURI(ctx context.Context, event *info.Event, uri string) (bool, string, error) <span class="cov0" title="0">{
-        if ret := provider.CompareHostOfURLS(uri, event.URL); !ret </span><span class="cov0" title="0">{
+func (v *Provider) GetTaskURI(_ context.Context, event *info.Event, uri string) (bool, string, error) <span class="cov8" title="1">{
+        if ret := provider.CompareHostOfURLS(uri, event.URL); !ret </span><span class="cov8" title="1">{
                 return false, "", nil
         }</span>
-        <span class="cov0" title="0">extracted, err := extractGitLabInfo(uri)
-        if err != nil </span><span class="cov0" title="0">{
+        <span class="cov8" title="1">extracted, err := extractGitLabInfo(uri)
+        if err != nil </span><span class="cov8" title="1">{
                 return false, "", err
         }</span>
 
-        <span class="cov0" title="0">nEvent := info.NewEvent()
-        nEvent.Organization = extracted.GroupOrUser
-        nEvent.Repository = extracted.Repository
-        nEvent.BaseBranch = extracted.Revision
-        ret, err := v.GetFileInsideRepo(ctx, nEvent, extracted.FilePath, extracted.Revision)
-        if err != nil </span><span class="cov0" title="0">{
-                return false, "", err
-        }</span>
-        <span class="cov0" title="0">return true, ret, nil</span>
+        // Use the existing client if available, otherwise create a temporary one.
+        // We avoid storing it to prevent side effects on the provider's state.
+        <span class="cov8" title="1">client := v.gitlabClient
+        if client == nil </span><span class="cov8" title="1">{
+                baseURL := fmt.Sprintf("%s://%s", extracted.Scheme, extracted.Host)
+                var clientErr error
+                client, clientErr = gl.NewClient(event.Provider.Token, gl.WithBaseURL(baseURL))
+                if clientErr != nil </span><span class="cov0" title="0">{
+                        return false, "", fmt.Errorf("failed to create gitlab client: %w", clientErr)
+                }</span>
+        }
+
+        // Construct the project slug for the remote repository
+        <span class="cov8" title="1">projectSlug := extracted.GroupOrUser + "/" + extracted.Repository
+
+        // Get the project ID for the remote repository
+        project, _, err := client.Projects.GetProject(projectSlug, &amp;gl.GetProjectOptions{})
+        if err != nil </span><span class="cov8" title="1">{
+                if errors.Is(err, gl.ErrNotFound) </span><span class="cov8" title="1">{
+                        return false, "", nil
+                }</span>
+                <span class="cov8" title="1">return false, "", fmt.Errorf("failed to get project ID for %s: %w", projectSlug, err)</span>
+        }
+
+        // Fetch the file from the remote repository
+        <span class="cov8" title="1">opt := &amp;gl.GetRawFileOptions{
+                Ref: gl.Ptr(extracted.Revision),
+        }
+        file, _, err := client.RepositoryFiles.GetRawFile(project.ID, extracted.FilePath, opt)
+        if err != nil </span><span class="cov8" title="1">{
+                if errors.Is(err, gl.ErrNotFound) </span><span class="cov8" title="1">{
+                        return false, "", nil
+                }</span>
+                <span class="cov8" title="1">return false, "", fmt.Errorf("failed to get file %s from remote repository: %w", extracted.FilePath, err)</span>
+        }
+        <span class="cov8" title="1">return true, string(file), nil</span>
 }
 </pre>
 		
