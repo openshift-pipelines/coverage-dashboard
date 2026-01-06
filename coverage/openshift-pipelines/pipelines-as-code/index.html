@@ -187,11 +187,11 @@
 				
 				<option value="file65">github.com/openshift-pipelines/pipelines-as-code/pkg/llm/providers/openai/client.go (94.0%)</option>
 				
-				<option value="file66">github.com/openshift-pipelines/pipelines-as-code/pkg/matcher/annotation_matcher.go (93.4%)</option>
+				<option value="file66">github.com/openshift-pipelines/pipelines-as-code/pkg/matcher/annotation_matcher.go (91.7%)</option>
 				
 				<option value="file67">github.com/openshift-pipelines/pipelines-as-code/pkg/matcher/annotation_tasks_install.go (89.0%)</option>
 				
-				<option value="file68">github.com/openshift-pipelines/pipelines-as-code/pkg/matcher/cel.go (82.5%)</option>
+				<option value="file68">github.com/openshift-pipelines/pipelines-as-code/pkg/matcher/cel.go (84.4%)</option>
 				
 				<option value="file69">github.com/openshift-pipelines/pipelines-as-code/pkg/matcher/errors.go (85.7%)</option>
 				
@@ -7528,9 +7528,11 @@ import (
         "github.com/openshift-pipelines/pipelines-as-code/pkg/apis/pipelinesascode"
         "github.com/openshift-pipelines/pipelines-as-code/pkg/apis/pipelinesascode/keys"
         apipac "github.com/openshift-pipelines/pipelines-as-code/pkg/apis/pipelinesascode/v1alpha1"
+        "github.com/openshift-pipelines/pipelines-as-code/pkg/customparams"
         pacerrors "github.com/openshift-pipelines/pipelines-as-code/pkg/errors"
         "github.com/openshift-pipelines/pipelines-as-code/pkg/events"
         "github.com/openshift-pipelines/pipelines-as-code/pkg/formatting"
+        "github.com/openshift-pipelines/pipelines-as-code/pkg/kubeinteraction"
         "github.com/openshift-pipelines/pipelines-as-code/pkg/opscomments"
         "github.com/openshift-pipelines/pipelines-as-code/pkg/params"
         "github.com/openshift-pipelines/pipelines-as-code/pkg/params/info"
@@ -7729,7 +7731,15 @@ func MatchPipelinerunByAnnotation(ctx context.Context, logger *zap.SugaredLogger
         }</span>
         <span class="cov8" title="1">logger.Info(infomsg)
 
-        celValidationErrors := []*pacerrors.PacYamlValidations{}
+        // Resolve custom params once for all PipelineRuns (for use in CEL expressions)
+        // Track original event type to detect changes (when on-comment matches)
+        originalEventType := event.EventType
+        customParams := resolveCustomParamsForCEL(ctx, repo, event, cs, vcx, eventEmitter, logger)
+        if len(customParams) &gt; 0 </span><span class="cov8" title="1">{
+                logger.Debugf("resolved %d custom params from repo for CEL", len(customParams))
+        }</span>
+
+        <span class="cov8" title="1">celValidationErrors := []*pacerrors.PacYamlValidations{}
         for _, prun := range pruns </span><span class="cov8" title="1">{
                 prMatch := Match{
                         PipelineRun: prun,
@@ -7773,7 +7783,13 @@ func MatchPipelinerunByAnnotation(ctx context.Context, logger *zap.SugaredLogger
                         if re.MatchString(strippedComment) </span><span class="cov8" title="1">{
                                 event.EventType = opscomments.OnCommentEventType.String()
 
-                                comment := event.TriggerComment
+                                // Re-resolve custom params if event type changed, so filters based on event_type stay accurate
+                                if event.EventType != originalEventType </span><span class="cov0" title="0">{
+                                        customParams = resolveCustomParamsForCEL(ctx, repo, event, cs, vcx, eventEmitter, logger)
+                                        originalEventType = event.EventType
+                                }</span>
+
+                                <span class="cov8" title="1">comment := event.TriggerComment
                                 if len(comment) &gt; maxCommentLogLength </span><span class="cov0" title="0">{
                                         comment = comment[:maxCommentLogLength] + "..."
                                 }</span>
@@ -7799,7 +7815,7 @@ func MatchPipelinerunByAnnotation(ctx context.Context, logger *zap.SugaredLogger
                 <span class="cov8" title="1">if celExpr, ok := prun.GetObjectMeta().GetAnnotations()[keys.OnCelExpression]; ok </span><span class="cov8" title="1">{
                         checkPipelineRunAnnotation(prun, eventEmitter, repo)
 
-                        out, err := celEvaluate(ctx, celExpr, event, vcx)
+                        out, err := celEvaluate(ctx, celExpr, event, vcx, customParams, eventEmitter, repo)
                         if err != nil </span><span class="cov8" title="1">{
                                 logger.Errorf("there was an error evaluating the CEL expression, skipping: %v", err)
                                 if checkIfCELEvaluateError(err) </span><span class="cov8" title="1">{
@@ -8026,6 +8042,41 @@ func MatchRunningPipelineRunForIncomingWebhook(eventType, incomingPipelineRun st
                 }</span>
         }
         <span class="cov8" title="1">return nil</span>
+}
+
+// resolveCustomParamsForCEL resolves custom parameters from the Repository CR for use in CEL expressions.
+// It returns a map of parameter names to values, excluding reserved keywords.
+// All parameters are returned as strings, including those from secret_ref.
+func resolveCustomParamsForCEL(ctx context.Context, repo *apipac.Repository, event *info.Event, cs *params.Run, vcx provider.Interface, eventEmitter *events.EventEmitter, logger *zap.SugaredLogger) map[string]string <span class="cov8" title="1">{
+        if repo == nil || repo.Spec.Params == nil </span><span class="cov8" title="1">{
+                return map[string]string{}
+        }</span>
+
+        // Create kubeinteraction interface
+        <span class="cov8" title="1">kinteract, err := kubeinteraction.NewKubernetesInteraction(cs)
+        if err != nil </span><span class="cov0" title="0">{
+                logger.Warnf("failed to create kubernetes interaction for custom params: %s", err.Error())
+                return map[string]string{}
+        }</span>
+
+        // Use existing customparams package to resolve all params
+        <span class="cov8" title="1">cp := customparams.NewCustomParams(event, repo, cs, kinteract, eventEmitter, vcx)
+        allParams, _, err := cp.GetParams(ctx)
+        if err != nil </span><span class="cov0" title="0">{
+                eventEmitter.EmitMessage(repo, zap.WarnLevel, "CustomParamsCELError",
+                        fmt.Sprintf("failed to resolve custom params for CEL: %s", err.Error()))
+                return map[string]string{}
+        }</span>
+
+        // Filter to only include params defined in repo.Spec.Params (not standard PAC params)
+        <span class="cov8" title="1">result := make(map[string]string)
+        for _, param := range *repo.Spec.Params </span><span class="cov8" title="1">{
+                if value, ok := allParams[param.Name]; ok </span><span class="cov8" title="1">{
+                        result[param.Name] = value
+                }</span>
+        }
+
+        <span class="cov8" title="1">return result</span>
 }
 </pre>
 		
@@ -8297,17 +8348,20 @@ import (
         "github.com/google/cel-go/common/decls"
         "github.com/google/cel-go/common/types"
         "github.com/google/cel-go/common/types/ref"
+        apipac "github.com/openshift-pipelines/pipelines-as-code/pkg/apis/pipelinesascode/v1alpha1"
         "github.com/openshift-pipelines/pipelines-as-code/pkg/changedfiles"
+        "github.com/openshift-pipelines/pipelines-as-code/pkg/events"
         "github.com/openshift-pipelines/pipelines-as-code/pkg/params/info"
         "github.com/openshift-pipelines/pipelines-as-code/pkg/params/triggertype"
         "github.com/openshift-pipelines/pipelines-as-code/pkg/provider"
+        "go.uber.org/zap"
 )
 
 const (
         reChangedFilesTags = `files\.`
 )
 
-func celEvaluate(ctx context.Context, expr string, event *info.Event, vcx provider.Interface) (ref.Val, error) <span class="cov8" title="1">{
+func celEvaluate(ctx context.Context, expr string, event *info.Event, vcx provider.Interface, customParams map[string]string, eventEmitter *events.EventEmitter, repo *apipac.Repository) (ref.Val, error) <span class="cov8" title="1">{
         eventTitle := event.PullRequestTitle
         if event.TriggerTarget == triggertype.Push </span><span class="cov8" title="1">{
                 eventTitle = event.SHATitle
@@ -8357,6 +8411,7 @@ func celEvaluate(ctx context.Context, expr string, event *info.Event, vcx provid
 
         <span class="cov8" title="1">data := map[string]any{
                 "event":         event.TriggerTarget.String(),
+                "event_type":    event.EventType,
                 "event_title":   eventTitle,
                 "target_branch": event.BaseBranch,
                 "source_branch": event.HeadBranch,
@@ -8372,10 +8427,12 @@ func celEvaluate(ctx context.Context, expr string, event *info.Event, vcx provid
                         "renamed":  changedFiles.Renamed,
                 },
         }
-        env, err := cel.NewEnv(
+
+        varDecls := []cel.EnvOption{
                 cel.Lib(celPac{vcx, ctx, event}),
                 cel.VariableDecls(
                         decls.NewVariable("event", types.StringType),
+                        decls.NewVariable("event_type", types.StringType),
                         decls.NewVariable("headers", types.NewMapType(types.StringType, types.DynType)),
                         decls.NewVariable("body", types.NewMapType(types.StringType, types.DynType)),
                         decls.NewVariable("event_title", types.StringType),
@@ -8384,7 +8441,21 @@ func celEvaluate(ctx context.Context, expr string, event *info.Event, vcx provid
                         decls.NewVariable("target_url", types.StringType),
                         decls.NewVariable("source_url", types.StringType),
                         decls.NewVariable("files", types.NewMapType(types.StringType, types.DynType)),
-                ))
+                ),
+        }
+        // Add declarations for custom params (all as strings)
+        for k, v := range customParams </span><span class="cov8" title="1">{
+                // Don't overwrite standard params
+                if _, ok := data[k]; !ok </span><span class="cov8" title="1">{
+                        data[k] = v
+                        varDecls = append(varDecls, cel.VariableDecls(decls.NewVariable(k, types.StringType)))
+                }</span> else<span class="cov8" title="1"> if eventEmitter != nil &amp;&amp; repo != nil </span><span class="cov8" title="1">{
+                        eventEmitter.EmitMessage(repo, zap.WarnLevel, "CELParamConflict",
+                                fmt.Sprintf("custom parameter '%s' conflicts with standard CEL variable and was ignored", k))
+                }</span>
+        }
+
+        <span class="cov8" title="1">env, err := cel.NewEnv(varDecls...)
         if err != nil </span><span class="cov0" title="0">{
                 return nil, err
         }</span>

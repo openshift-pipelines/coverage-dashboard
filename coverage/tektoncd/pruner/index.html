@@ -55,7 +55,7 @@
 			<div id="nav">
 				<select id="files">
 				
-				<option value="file0">github.com/tektoncd/pruner/pkg/config/config.go (61.0%)</option>
+				<option value="file0">github.com/tektoncd/pruner/pkg/config/config.go (56.3%)</option>
 				
 				<option value="file1">github.com/tektoncd/pruner/pkg/config/config_defaults.go (0.0%)</option>
 				
@@ -63,7 +63,7 @@
 				
 				<option value="file3">github.com/tektoncd/pruner/pkg/config/helper.go (35.3%)</option>
 				
-				<option value="file4">github.com/tektoncd/pruner/pkg/config/history_limiter.go (65.2%)</option>
+				<option value="file4">github.com/tektoncd/pruner/pkg/config/history_limiter.go (58.0%)</option>
 				
 				<option value="file5">github.com/tektoncd/pruner/pkg/config/ttl_handler.go (64.1%)</option>
 				
@@ -75,11 +75,11 @@
 				
 				<option value="file9">github.com/tektoncd/pruner/pkg/reconciler/pipelinerun/controller.go (0.0%)</option>
 				
-				<option value="file10">github.com/tektoncd/pruner/pkg/reconciler/pipelinerun/reconciler.go (73.9%)</option>
+				<option value="file10">github.com/tektoncd/pruner/pkg/reconciler/pipelinerun/reconciler.go (73.4%)</option>
 				
 				<option value="file11">github.com/tektoncd/pruner/pkg/reconciler/taskrun/controller.go (17.1%)</option>
 				
-				<option value="file12">github.com/tektoncd/pruner/pkg/reconciler/taskrun/reconciler.go (78.8%)</option>
+				<option value="file12">github.com/tektoncd/pruner/pkg/reconciler/taskrun/reconciler.go (78.2%)</option>
 				
 				<option value="file13">github.com/tektoncd/pruner/pkg/reconciler/tektonpruner/controller.go (12.8%)</option>
 				
@@ -418,6 +418,65 @@ func getFromPrunerConfigResourceLevelwithSelector(namespacesSpec map[string]Name
         <span class="cov8" title="1">return nil, ""</span>
 }
 
+// getMatchingSelectorFromConfig retrieves the ConfigMap's selector that matches a resource
+func getMatchingSelectorFromConfig(namespacesSpec map[string]NamespaceSpec, namespace, name string, selector SelectorSpec, resourceType PrunerResourceType) *SelectorSpec <span class="cov0" title="0">{
+        prunerResourceSpec, found := namespacesSpec[namespace]
+        if !found </span><span class="cov0" title="0">{
+                return nil
+        }</span>
+
+        <span class="cov0" title="0">var resourceSpecs []ResourceSpec
+        switch resourceType </span>{
+        case PrunerResourceTypePipelineRun:<span class="cov0" title="0">
+                resourceSpecs = prunerResourceSpec.PipelineRuns</span>
+        case PrunerResourceTypeTaskRun:<span class="cov0" title="0">
+                resourceSpecs = prunerResourceSpec.TaskRuns</span>
+        }
+
+        <span class="cov0" title="0">if len(selector.MatchAnnotations) == 0 &amp;&amp; len(selector.MatchLabels) == 0 </span><span class="cov0" title="0">{
+                return nil
+        }</span>
+
+        <span class="cov0" title="0">for _, resourceSpec := range resourceSpecs </span><span class="cov0" title="0">{
+                for _, selectorSpec := range resourceSpec.Selector </span><span class="cov0" title="0">{
+                        annotationsMatch := true
+                        labelsMatch := true
+
+                        if len(selectorSpec.MatchAnnotations) &gt; 0 </span><span class="cov0" title="0">{
+                                if len(selector.MatchAnnotations) == 0 </span><span class="cov0" title="0">{
+                                        annotationsMatch = false
+                                }</span> else<span class="cov0" title="0"> {
+                                        for key, value := range selectorSpec.MatchAnnotations </span><span class="cov0" title="0">{
+                                                if resourceAnnotationValue, exists := selector.MatchAnnotations[key]; !exists || resourceAnnotationValue != value </span><span class="cov0" title="0">{
+                                                        annotationsMatch = false
+                                                        break</span>
+                                                }
+                                        }
+                                }
+                        }
+
+                        <span class="cov0" title="0">if len(selectorSpec.MatchLabels) &gt; 0 </span><span class="cov0" title="0">{
+                                if len(selector.MatchLabels) == 0 </span><span class="cov0" title="0">{
+                                        labelsMatch = false
+                                }</span> else<span class="cov0" title="0"> {
+                                        for key, value := range selectorSpec.MatchLabels </span><span class="cov0" title="0">{
+                                                if resourceLabelValue, exists := selector.MatchLabels[key]; !exists || resourceLabelValue != value </span><span class="cov0" title="0">{
+                                                        labelsMatch = false
+                                                        break</span>
+                                                }
+                                        }
+                                }
+                        }
+
+                        <span class="cov0" title="0">if annotationsMatch &amp;&amp; labelsMatch </span><span class="cov0" title="0">{
+                                return &amp;selectorSpec
+                        }</span>
+                }
+        }
+
+        <span class="cov0" title="0">return nil</span>
+}
+
 // getResourceFieldData retrieves configuration field values based on enforcedConfigLevel
 // Design principle: Selector support ONLY for namespace-level ConfigMaps, NOT global ConfigMaps
 //
@@ -749,6 +808,20 @@ func (ps *prunerConfigStore) GetTaskFailedHistoryLimitCount(namespace, name stri
         defer ps.mutex.Unlock()
         enforcedConfigLevel := ps.GetTaskEnforcedConfigLevel(namespace, name, selector)
         return getResourceFieldData(ps.globalConfig, ps.namespaceConfig, namespace, name, selector, PrunerResourceTypeTaskRun, PrunerFieldTypeFailedHistoryLimit, enforcedConfigLevel)
+}</span>
+
+// GetPipelineMatchingSelector returns the ConfigMap's selector that matches a PipelineRun.
+func (ps *prunerConfigStore) GetPipelineMatchingSelector(namespace, name string, selector SelectorSpec) *SelectorSpec <span class="cov0" title="0">{
+        ps.mutex.RLock()
+        defer ps.mutex.RUnlock()
+        return getMatchingSelectorFromConfig(ps.namespaceConfig, namespace, name, selector, PrunerResourceTypePipelineRun)
+}</span>
+
+// GetTaskMatchingSelector returns the ConfigMap's selector that matches a TaskRun.
+func (ps *prunerConfigStore) GetTaskMatchingSelector(namespace, name string, selector SelectorSpec) *SelectorSpec <span class="cov0" title="0">{
+        ps.mutex.RLock()
+        defer ps.mutex.RUnlock()
+        return getMatchingSelectorFromConfig(ps.namespaceConfig, namespace, name, selector, PrunerResourceTypeTaskRun)
 }</span>
 
 // ValidateGlobalConfig validates a GlobalConfig struct directly without ConfigMap conversion
@@ -1578,6 +1651,7 @@ type HistoryLimiterResourceFuncs interface {
         IsCompleted(resource metav1.Object) bool
         GetDefaultLabelKey() string
         GetEnforcedConfigLevel(namespace, name string, selectors SelectorSpec) EnforcedConfigLevel
+        GetMatchingSelector(namespace, name string, selectors SelectorSpec) *SelectorSpec
 }
 
 // HistoryLimiter is a struct that encapsulates functionality for managing resources
@@ -1804,15 +1878,45 @@ func (hl *HistoryLimiter) doResourceCleanup(ctx context.Context, resource metav1
                 label := fmt.Sprintf("%s=%s", labelKey, resourceName)
                 resources, err = hl.resourceFn.List(ctx, resource.GetNamespace(), label)</span>
         case "identifiedBy_resource_selector":<span class="cov0" title="0">
-                // Filter by selector labels (namespace-level enforcement with selectors)
+                // Filter by the ConfigMap's selector labels only
+                matchingSelector := hl.resourceFn.GetMatchingSelector(resource.GetNamespace(), resourceName, resourceSelectors)
                 labelSelector := ""
-                for k, v := range resourceLabels </span><span class="cov0" title="0">{
-                        if labelSelector != "" </span><span class="cov0" title="0">{
-                                labelSelector += ","
-                        }</span>
-                        <span class="cov0" title="0">labelSelector += fmt.Sprintf("%s=%s", k, v)</span>
+                if matchingSelector != nil &amp;&amp; len(matchingSelector.MatchLabels) &gt; 0 </span><span class="cov0" title="0">{
+                        for k, v := range matchingSelector.MatchLabels </span><span class="cov0" title="0">{
+                                if labelSelector != "" </span><span class="cov0" title="0">{
+                                        labelSelector += ","
+                                }</span>
+                                <span class="cov0" title="0">labelSelector += fmt.Sprintf("%s=%s", k, v)</span>
+                        }
                 }
-                <span class="cov0" title="0">resources, err = hl.resourceFn.List(ctx, resource.GetNamespace(), labelSelector)</span>
+                <span class="cov0" title="0">logger.Debugw("listing resources with selector from ConfigMap",
+                        "resource", hl.resourceFn.Type(),
+                        "namespace", resource.GetNamespace(),
+                        "labelSelector", labelSelector)
+                resources, err = hl.resourceFn.List(ctx, resource.GetNamespace(), labelSelector)
+                if err != nil </span><span class="cov0" title="0">{
+                        return err
+                }</span>
+                <span class="cov0" title="0">if matchingSelector != nil &amp;&amp; len(matchingSelector.MatchAnnotations) &gt; 0 </span><span class="cov0" title="0">{
+                        filteredResources := []metav1.Object{}
+                        for _, res := range resources </span><span class="cov0" title="0">{
+                                resAnnotations := res.GetAnnotations()
+                                if resAnnotations == nil </span><span class="cov0" title="0">{
+                                        continue</span>
+                                }
+                                <span class="cov0" title="0">matches := true
+                                for k, v := range matchingSelector.MatchAnnotations </span><span class="cov0" title="0">{
+                                        if resAnnotations[k] != v </span><span class="cov0" title="0">{
+                                                matches = false
+                                                break</span>
+                                        }
+                                }
+                                <span class="cov0" title="0">if matches </span><span class="cov0" title="0">{
+                                        filteredResources = append(filteredResources, res)
+                                }</span>
+                        }
+                        <span class="cov0" title="0">resources = filteredResources</span>
+                }
         case "identifiedBy_resource_ann":<span class="cov0" title="0">
                 // Filter by annotations (converted to labels for listing)
                 labelSelector := ""
@@ -3402,6 +3506,11 @@ func (prf *PrFuncs) GetFailedHistoryLimitCount(namespace, name string, selectors
 func (prf *PrFuncs) GetEnforcedConfigLevel(namespace, name string, selectors config.SelectorSpec) config.EnforcedConfigLevel <span class="cov8" title="1">{
         return config.PrunerConfigStore.GetPipelineEnforcedConfigLevel(namespace, name, selectors)
 }</span>
+
+// GetMatchingSelector returns the ConfigMap's selector that matches a PipelineRun.
+func (prf *PrFuncs) GetMatchingSelector(namespace, name string, selectors config.SelectorSpec) *config.SelectorSpec <span class="cov0" title="0">{
+        return config.PrunerConfigStore.GetPipelineMatchingSelector(namespace, name, selectors)
+}</span>
 </pre>
 		
 		<pre class="file" id="file11" style="display: none">package taskrun
@@ -3960,6 +4069,11 @@ func (trf *TrFuncs) GetFailedHistoryLimitCount(namespace, name string, selectors
 // GetEnforcedConfigLevel retrieves the enforced config level for a TaskRun.
 func (trf *TrFuncs) GetEnforcedConfigLevel(namespace, name string, selectors config.SelectorSpec) config.EnforcedConfigLevel <span class="cov8" title="1">{
         return config.PrunerConfigStore.GetTaskEnforcedConfigLevel(namespace, name, selectors)
+}</span>
+
+// GetMatchingSelector returns the ConfigMap's selector that matches a TaskRun.
+func (trf *TrFuncs) GetMatchingSelector(namespace, name string, selectors config.SelectorSpec) *config.SelectorSpec <span class="cov0" title="0">{
+        return config.PrunerConfigStore.GetTaskMatchingSelector(namespace, name, selectors)
 }</span>
 </pre>
 		
