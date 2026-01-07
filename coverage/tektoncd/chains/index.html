@@ -135,11 +135,11 @@
 				
 				<option value="file39">github.com/tektoncd/chains/pkg/chains/storage/oci/attestation.go (82.1%)</option>
 				
-				<option value="file40">github.com/tektoncd/chains/pkg/chains/storage/oci/legacy.go (40.0%)</option>
+				<option value="file40">github.com/tektoncd/chains/pkg/chains/storage/oci/legacy.go (45.4%)</option>
 				
 				<option value="file41">github.com/tektoncd/chains/pkg/chains/storage/oci/options.go (100.0%)</option>
 				
-				<option value="file42">github.com/tektoncd/chains/pkg/chains/storage/oci/simple.go (83.3%)</option>
+				<option value="file42">github.com/tektoncd/chains/pkg/chains/storage/oci/simple.go (86.7%)</option>
 				
 				<option value="file43">github.com/tektoncd/chains/pkg/chains/storage/pubsub/pubsub.go (58.6%)</option>
 				
@@ -6424,7 +6424,7 @@ func (s *AttestationStorer) Store(ctx context.Context, req *api.StoreRequest[nam
         <span class="cov8" title="1">se, err := ociremote.SignedEntity(req.Artifact, ociremote.WithRemoteOptions(s.remoteOpts...))
         var entityNotFoundError *ociremote.EntityNotFoundError
         if errors.As(err, &amp;entityNotFoundError) </span><span class="cov8" title="1">{
-                se = ociremote.SignedUnknown(req.Artifact)
+                se = ociremote.SignedUnknown(req.Artifact, ociremote.WithRemoteOptions(s.remoteOpts...))
         }</span> else<span class="cov8" title="1"> if err != nil </span><span class="cov0" title="0">{
                 return nil, errors.Wrap(err, "getting signed image")
         }</span>
@@ -6470,9 +6470,11 @@ package oci
 
 import (
         "context"
+        "crypto/tls"
         "encoding/base64"
         "encoding/json"
         "fmt"
+        "net/http"
 
         "github.com/tektoncd/chains/pkg/chains/formats"
         "github.com/tektoncd/chains/pkg/chains/objects"
@@ -6530,7 +6532,7 @@ func NewStorageBackend(ctx context.Context, client kubernetes.Interface, cfg con
 // StorePayload implements the storage.Backend interface.
 func (b *Backend) StorePayload(ctx context.Context, obj objects.TektonObject, rawPayload []byte, signature string, storageOpts config.StorageOpts) error <span class="cov8" title="1">{
         logger := logging.FromContext(ctx)
-        auth, err := b.getAuthenticator(ctx, obj, b.client)
+        remoteOpts, err := b.buildRemoteOptions(ctx, obj)
         if err != nil </span><span class="cov0" title="0">{
                 return errors.Wrap(err, "getting oci authenticator")
         }</span>
@@ -6542,7 +6544,7 @@ func (b *Backend) StorePayload(ctx context.Context, obj objects.TektonObject, ra
                 if err := json.Unmarshal(rawPayload, &amp;format); err != nil </span><span class="cov0" title="0">{
                         return errors.Wrap(err, "unmarshal simplesigning")
                 }</span>
-                <span class="cov8" title="1">return b.uploadSignature(ctx, format, rawPayload, signature, storageOpts, auth)</span>
+                <span class="cov8" title="1">return b.uploadSignature(ctx, format, rawPayload, signature, storageOpts, remoteOpts...)</span>
         }
 
         <span class="cov8" title="1">if _, ok := formats.IntotoAttestationSet[storageOpts.PayloadFormat]; ok </span><span class="cov8" title="1">{
@@ -6560,12 +6562,34 @@ func (b *Backend) StorePayload(ctx context.Context, obj objects.TektonObject, ra
                         return nil
                 }</span>
 
-                <span class="cov8" title="1">return b.uploadAttestation(ctx, &amp;attestation, signature, storageOpts, auth)</span>
+                <span class="cov8" title="1">return b.uploadAttestation(ctx, &amp;attestation, signature, storageOpts, remoteOpts...)</span>
         }
 
         // Fallback in case unsupported payload format is used or the deprecated "tekton" format
         <span class="cov8" title="1">logger.Info("Skipping upload to OCI registry, OCI storage backend is only supported for OCI images and in-toto attestations")
         return nil</span>
+}
+
+// buildRemoteOptions build remote options for OCI storage backend
+func (b *Backend) buildRemoteOptions(ctx context.Context, obj objects.TektonObject) ([]remote.Option, error) <span class="cov8" title="1">{
+        opts := []remote.Option{}
+        auth, err := b.getAuthenticator(ctx, obj, b.client)
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, err
+        }</span>
+        <span class="cov8" title="1">opts = append(opts, auth)
+        if b.cfg.Storage.OCI.Insecure </span><span class="cov8" title="1">{
+                logger := logging.FromContext(ctx)
+                logger.Warn("Using insecure OCI registry connection. This skips TLS certificate verification and poses security risks. Only use this in testing or development environments.")
+                // InsecureSkipVerify is used only when explicitly configured for testing or development environments
+                // This is controlled by the user through configuration and should not be used in production
+                opts = append(opts, remote.WithTransport(&amp;http.Transport{
+                        TLSClientConfig: &amp;tls.Config{
+                                InsecureSkipVerify: true, // #nosec G402
+                        },
+                }))
+        }</span>
+        <span class="cov8" title="1">return opts, nil</span>
 }
 
 func (b *Backend) uploadSignature(ctx context.Context, format simple.SimpleContainerImage, rawPayload []byte, signature string, storageOpts config.StorageOpts, remoteOpts ...remote.Option) error <span class="cov8" title="1">{
@@ -6600,7 +6624,7 @@ func (b *Backend) uploadSignature(ctx context.Context, format simple.SimpleConta
                         Cert:      []byte(storageOpts.Cert),
                         Chain:     []byte(storageOpts.Chain),
                 },
-        }); err != nil </span><span class="cov0" title="0">{
+        }); err != nil </span><span class="cov8" title="1">{
                 return err
         }</span>
         <span class="cov8" title="1">return nil</span>
@@ -6745,7 +6769,7 @@ func (b *Backend) RetrieveArtifact(ctx context.Context, obj objects.TektonObject
 
 func newRepo(cfg config.Config, imageName name.Digest) (name.Repository, error) <span class="cov8" title="1">{
         var opts []name.Option
-        if cfg.Storage.OCI.Insecure </span><span class="cov0" title="0">{
+        if cfg.Storage.OCI.Insecure </span><span class="cov8" title="1">{
                 opts = append(opts, name.Insecure)
         }</span>
 
@@ -6873,8 +6897,8 @@ func (s *SimpleStorer) Store(ctx context.Context, req *api.StoreRequest[name.Dig
         se, err := ociremote.SignedEntity(req.Artifact, ociremote.WithRemoteOptions(s.remoteOpts...))
         var entityNotFoundError *ociremote.EntityNotFoundError
         if errors.As(err, &amp;entityNotFoundError) </span><span class="cov8" title="1">{
-                se = ociremote.SignedUnknown(req.Artifact)
-        }</span> else<span class="cov8" title="1"> if err != nil </span><span class="cov0" title="0">{
+                se = ociremote.SignedUnknown(req.Artifact, ociremote.WithRemoteOptions(s.remoteOpts...))
+        }</span> else<span class="cov8" title="1"> if err != nil </span><span class="cov8" title="1">{
                 return nil, errors.Wrap(err, "getting signed image")
         }</span>
 
