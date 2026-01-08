@@ -93,7 +93,7 @@
 				
 				<option value="file18">github.com/tektoncd/pipeline/pkg/apis/pipeline/pod/affinity_assitant_template.go (0.0%)</option>
 				
-				<option value="file19">github.com/tektoncd/pipeline/pkg/apis/pipeline/pod/template.go (88.6%)</option>
+				<option value="file19">github.com/tektoncd/pipeline/pkg/apis/pipeline/pod/template.go (88.9%)</option>
 				
 				<option value="file20">github.com/tektoncd/pipeline/pkg/apis/pipeline/v1/artifact_types.go (95.7%)</option>
 				
@@ -427,7 +427,7 @@
 				
 				<option value="file185">github.com/tektoncd/pipeline/pkg/reconciler/pipeline/dag/dag.go (99.0%)</option>
 				
-				<option value="file186">github.com/tektoncd/pipeline/pkg/reconciler/pipelinerun/affinity_assistant.go (96.3%)</option>
+				<option value="file186">github.com/tektoncd/pipeline/pkg/reconciler/pipelinerun/affinity_assistant.go (96.5%)</option>
 				
 				<option value="file187">github.com/tektoncd/pipeline/pkg/reconciler/pipelinerun/cancel.go (91.8%)</option>
 				
@@ -445,7 +445,7 @@
 				
 				<option value="file194">github.com/tektoncd/pipeline/pkg/reconciler/pipelinerun/resources/pipelinerunstate.go (97.3%)</option>
 				
-				<option value="file195">github.com/tektoncd/pipeline/pkg/reconciler/pipelinerun/resources/resultrefresolution.go (99.2%)</option>
+				<option value="file195">github.com/tektoncd/pipeline/pkg/reconciler/pipelinerun/resources/resultrefresolution.go (98.4%)</option>
 				
 				<option value="file196">github.com/tektoncd/pipeline/pkg/reconciler/pipelinerun/resources/validate_dependencies.go (100.0%)</option>
 				
@@ -565,7 +565,7 @@
 				
 				<option value="file254">github.com/tektoncd/pipeline/pkg/resolution/resolver/git/resolver.go (84.2%)</option>
 				
-				<option value="file255">github.com/tektoncd/pipeline/pkg/resolution/resolver/http/resolver.go (92.5%)</option>
+				<option value="file255">github.com/tektoncd/pipeline/pkg/resolution/resolver/http/resolver.go (91.2%)</option>
 				
 				<option value="file256">github.com/tektoncd/pipeline/pkg/resolution/resolver/hub/resolver.go (77.6%)</option>
 				
@@ -3225,6 +3225,14 @@ type AffinityAssistantTemplate struct {
         // default.
         // +optional
         PriorityClassName *string `json:"priorityClassName,omitempty"`
+
+        // ServiceAccountName is the name of the ServiceAccount to use for the affinity assistant pod.
+        // If not specified, the affinity assistant will inherit the serviceAccountName from the
+        // PipelineRun's taskRunTemplate. If that is also not specified, the pod will use the
+        // namespace's default ServiceAccount.
+        // More info: https://kubernetes.io/docs/tasks/configure-pod-container/configure-service-account/
+        // +optional
+        ServiceAccountName string `json:"serviceAccountName,omitempty"`
 }
 
 // Equals checks if this Template is identical to the given Template.
@@ -3523,6 +3531,9 @@ func MergeAAPodTemplateWithDefault(tpl, defaultTpl *AAPodTemplate) *AAPodTemplat
                 }</span>
                 <span class="cov8" title="1">if tpl.PriorityClassName == nil </span><span class="cov0" title="0">{
                         tpl.PriorityClassName = defaultTpl.PriorityClassName
+                }</span>
+                <span class="cov8" title="1">if tpl.ServiceAccountName == "" </span><span class="cov8" title="1">{
+                        tpl.ServiceAccountName = defaultTpl.ServiceAccountName
                 }</span>
 
                 <span class="cov8" title="1">return tpl</span>
@@ -35065,6 +35076,19 @@ func affinityAssistantStatefulSet(aaBehavior aa.AffinityAssistantBehavior, name 
                 priorityClassName = *tpl.PriorityClassName
         }</span>
 
+        // Determine ServiceAccountName with 3-tier priority:
+        // 1. Explicit override from AffinityAssistantTemplate
+        // 2. Inherit from PipelineRun's TaskRunTemplate (default behavior for OpenShift SCC compatibility)
+        // 3. Empty string (Kubernetes defaults to "default" ServiceAccount)
+        <span class="cov8" title="1">serviceAccountName := ""
+        if tpl.ServiceAccountName != "" </span><span class="cov8" title="1">{
+                // Explicit override in AffinityAssistantTemplate
+                serviceAccountName = tpl.ServiceAccountName
+        }</span> else<span class="cov8" title="1"> if pr.Spec.TaskRunTemplate.ServiceAccountName != "" </span><span class="cov8" title="1">{
+                // Inherit from PipelineRun's TaskRunTemplate
+                serviceAccountName = pr.Spec.TaskRunTemplate.ServiceAccountName
+        }</span>
+
         <span class="cov8" title="1">containers := []corev1.Container{{
                 Name:  "affinity-assistant",
                 Image: containerConfig.Image,
@@ -35129,11 +35153,12 @@ func affinityAssistantStatefulSet(aaBehavior aa.AffinityAssistantBehavior, name 
                                 Spec: corev1.PodSpec{
                                         Containers: containers,
 
-                                        Tolerations:       tpl.Tolerations,
-                                        NodeSelector:      tpl.NodeSelector,
-                                        ImagePullSecrets:  tpl.ImagePullSecrets,
-                                        SecurityContext:   tpl.SecurityContext,
-                                        PriorityClassName: priorityClassName,
+                                        Tolerations:        tpl.Tolerations,
+                                        NodeSelector:       tpl.NodeSelector,
+                                        ImagePullSecrets:   tpl.ImagePullSecrets,
+                                        SecurityContext:    tpl.SecurityContext,
+                                        PriorityClassName:  priorityClassName,
+                                        ServiceAccountName: serviceAccountName,
 
                                         Affinity: getAssistantAffinityMergedWithPodTemplateAffinity(pr, aaBehavior),
                                         Volumes:  volumes,
@@ -40473,7 +40498,7 @@ func removeDup(refs ResolvedResultRefs) ResolvedResultRefs <span class="cov8" ti
                 if order[i].PipelineTask &gt; order[j].PipelineTask </span><span class="cov0" title="0">{
                         return false
                 }</span>
-                <span class="cov8" title="1">if order[i].Result &gt; order[j].Result </span><span class="cov8" title="1">{
+                <span class="cov8" title="1">if order[i].Result &gt; order[j].Result </span><span class="cov0" title="0">{
                         return false
                 }</span>
                 <span class="cov8" title="1">return true</span>
@@ -51657,6 +51682,8 @@ package http
 import (
         "context"
         "crypto/sha256"
+        "crypto/sha512"
+        "crypto/subtle"
         "encoding/base64"
         "encoding/hex"
         "errors"
@@ -51697,6 +51724,15 @@ const (
 
         // default key in the HTTP password secret
         defaultBasicAuthSecretKey = "password"
+
+        // digestParam is the parameter name for the digest of the content
+        digestParam = "digest"
+
+        // sha512Algo is the prefix name for the sha512sum value
+        sha512Algo = "sha512"
+
+        // sha256Algo is the prefix name for the sha256sum value
+        sha256Algo = "sha256"
 )
 
 // Resolver implements a framework.Resolver that can fetch files from an HTTP URL
@@ -51847,6 +51883,52 @@ func makeHttpClient(ctx context.Context) (*http.Client, error) <span class="cov8
         }, nil</span>
 }
 
+// compareSHA compares two hexadecimal SHA strings in constant time.
+func compareSHA(expectedSHA string, computedSHA []byte) error <span class="cov8" title="1">{
+        expectedBytes, err := hex.DecodeString(expectedSHA)
+        if err != nil </span><span class="cov8" title="1">{
+                return fmt.Errorf("error decoding expected SHA string: %w", err)
+        }</span>
+
+        <span class="cov8" title="1">match := subtle.ConstantTimeCompare(expectedBytes, computedSHA)
+        if match != 1 </span><span class="cov8" title="1">{
+                return fmt.Errorf("SHA mismatch, expected %s, got %s", expectedSHA, hex.EncodeToString(computedSHA))
+        }</span>
+
+        <span class="cov8" title="1">return nil</span>
+}
+
+func validateDigest(digest string, body []byte, logger *zap.SugaredLogger) error <span class="cov8" title="1">{
+        digestValues := strings.SplitN(digest, ":", 2)
+        if len(digestValues) != 2 </span><span class="cov8" title="1">{
+                return fmt.Errorf("invalid digest format: %s", digest)
+        }</span>
+        <span class="cov8" title="1">digestAlgo := digestValues[0]
+        if digestAlgo != sha512Algo &amp;&amp; digestAlgo != sha256Algo </span><span class="cov8" title="1">{
+                return fmt.Errorf("invalid digest algorithm: %s", digestAlgo)
+        }</span>
+
+        <span class="cov8" title="1">digestValue := digestValues[1]
+
+        logger.Infof("Validating %s with value %s to the content", digestAlgo, digestValue)
+        switch digestAlgo </span>{
+        case sha512Algo:<span class="cov8" title="1">
+                sha512Hash := sha512.Sum512(body)
+                if len(digestValue) != 128 </span><span class="cov8" title="1">{
+                        return fmt.Errorf("invalid sha512 digest value, expected length: 128, got: %d", len(digestValue))
+                }</span>
+                <span class="cov8" title="1">return compareSHA(digestValue, sha512Hash[:])</span>
+        case sha256Algo:<span class="cov8" title="1">
+                sha256Hash := sha256.Sum256(body)
+                if len(digestValue) != 64 </span><span class="cov8" title="1">{
+                        return fmt.Errorf("invalid sha256 digest value, expected length: 64, got: %d", len(digestValue))
+                }</span>
+                <span class="cov8" title="1">return compareSHA(digestValue, sha256Hash[:])</span>
+        }
+
+        <span class="cov0" title="0">return nil</span>
+}
+
 func FetchHttpResource(ctx context.Context, params map[string]string, kubeclient kubernetes.Interface, logger *zap.SugaredLogger) (framework.ResolvedResource, error) <span class="cov8" title="1">{
         var targetURL string
         var ok bool
@@ -51888,6 +51970,14 @@ func FetchHttpResource(ctx context.Context, params map[string]string, kubeclient
         if err != nil </span><span class="cov0" title="0">{
                 return nil, fmt.Errorf("error reading response body: %w", err)
         }</span>
+
+        <span class="cov8" title="1">digest, ok := params[digestParam]
+        if ok </span><span class="cov0" title="0">{
+                err = validateDigest(digest, body, logger)
+                if err != nil </span><span class="cov0" title="0">{
+                        return nil, fmt.Errorf("error validating digest: %w", err)
+                }</span>
+        }
 
         <span class="cov8" title="1">return &amp;resolvedHttpResource{
                 Content: body,
