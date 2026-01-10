@@ -63,7 +63,7 @@
 				
 				<option value="file3">github.com/openshift-pipelines/pipelines-as-code/pkg/adapter/adapter.go (61.5%)</option>
 				
-				<option value="file4">github.com/openshift-pipelines/pipelines-as-code/pkg/adapter/incoming.go (92.9%)</option>
+				<option value="file4">github.com/openshift-pipelines/pipelines-as-code/pkg/adapter/incoming.go (93.9%)</option>
 				
 				<option value="file5">github.com/openshift-pipelines/pipelines-as-code/pkg/adapter/sinker.go (26.4%)</option>
 				
@@ -347,7 +347,7 @@
 				
 				<option value="file145">github.com/openshift-pipelines/pipelines-as-code/pkg/sort/runtime_sort.go (30.2%)</option>
 				
-				<option value="file146">github.com/openshift-pipelines/pipelines-as-code/pkg/sort/task_log_snippets.go (87.5%)</option>
+				<option value="file146">github.com/openshift-pipelines/pipelines-as-code/pkg/sort/task_log_snippets.go (100.0%)</option>
 				
 				<option value="file147">github.com/openshift-pipelines/pipelines-as-code/pkg/sort/task_status.go (88.9%)</option>
 				
@@ -919,7 +919,7 @@ func parseIncomingPayload(request *http.Request, payloadBody []byte) (incomingPa
         if parsedPayload.validate() != nil </span><span class="cov8" title="1">{
                 if request.Method == http.MethodPost &amp;&amp; request.Header.Get("Content-Type") == "application/json" &amp;&amp; len(payloadBody) &gt; 0 </span><span class="cov8" title="1">{
                         parsedPayload = incomingPayload{legacyMode: false}
-                        if err := json.Unmarshal(payloadBody, &amp;parsedPayload); err != nil </span><span class="cov0" title="0">{
+                        if err := json.Unmarshal(payloadBody, &amp;parsedPayload); err != nil </span><span class="cov8" title="1">{
                                 return parsedPayload, fmt.Errorf("invalid JSON body for incoming webhook: %w", err)
                         }</span>
                 }
@@ -22078,7 +22078,7 @@ type taskInfoSorter []pacv1alpha1.TaskInfos
 
 func (s taskInfoSorter) Len() int <span class="cov8" title="1">{ return len(s) }</span>
 
-func (s taskInfoSorter) Swap(i, j int) <span class="cov0" title="0">{
+func (s taskInfoSorter) Swap(i, j int) <span class="cov8" title="1">{
         s[i], s[j] = s[j], s[i]
 }</span>
 
