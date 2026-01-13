@@ -231,7 +231,7 @@
 				
 				<option value="file87">github.com/openshift-pipelines/pipelines-as-code/pkg/params/settings/config.go (84.4%)</option>
 				
-				<option value="file88">github.com/openshift-pipelines/pipelines-as-code/pkg/params/settings/default.go (97.3%)</option>
+				<option value="file88">github.com/openshift-pipelines/pipelines-as-code/pkg/params/settings/default.go (96.9%)</option>
 				
 				<option value="file89">github.com/openshift-pipelines/pipelines-as-code/pkg/params/triggertype/types.go (0.0%)</option>
 				
@@ -343,7 +343,7 @@
 				
 				<option value="file143">github.com/openshift-pipelines/pipelines-as-code/pkg/sort/repository.go (100.0%)</option>
 				
-				<option value="file144">github.com/openshift-pipelines/pipelines-as-code/pkg/sort/repository_status.go (83.3%)</option>
+				<option value="file144">github.com/openshift-pipelines/pipelines-as-code/pkg/sort/repository_status.go (81.8%)</option>
 				
 				<option value="file145">github.com/openshift-pipelines/pipelines-as-code/pkg/sort/runtime_sort.go (30.2%)</option>
 				
@@ -2029,7 +2029,7 @@ import (
 func OpenWebBrowser(ctx context.Context, url string) error <span class="cov0" title="0">{
         var cmd string
 
-        args := []string{}
+        args := make([]string, 0, 1)
         switch runtime.GOOS </span>{
         case "windows":<span class="cov0" title="0">
                 cmd = "cmd"
@@ -10324,8 +10324,6 @@ const (
         HubURLKey                          = "hub-url"
         HubCatalogNameKey                  = "hub-catalog-name"
         HubCatalogTypeKey                  = "hub-catalog-type"
-        TektonHubURLDefaultValue           = "https://api.hub.tekton.dev/v1"
-        TektonHubCatalogNameDefaultValue   = "tekton"
         ArtifactHubCatalogNameDefaultValue = "artifacthub"
         ArtifactHubURLDefaultValue         = "https://artifacthub.io/api/v1"
 
@@ -10509,24 +10507,7 @@ func getHubCatalogs(logger *zap.SugaredLogger, catalogs *sync.Map, config map[st
         }
         catalogs.Store("default", hc)
 
-        exists := false
-        catalogs.Range(func(_, value interface{}) bool </span><span class="cov8" title="1">{
-                if catalog, ok := value.(HubCatalog); ok &amp;&amp; catalog.Type == hubtypes.TektonHubType </span><span class="cov8" title="1">{
-                        exists = true
-                        return false // Stop iteration
-                }</span>
-                <span class="cov8" title="1">return true</span> // Continue iteration
-        })
-        <span class="cov8" title="1">if !exists </span><span class="cov8" title="1">{
-                catalogs.Store(hubtypes.TektonHubType, HubCatalog{
-                        Index: hubtypes.TektonHubType,
-                        Name:  TektonHubCatalogNameDefaultValue,
-                        URL:   TektonHubURLDefaultValue,
-                        Type:  hubtypes.TektonHubType,
-                })
-        }</span>
-
-        <span class="cov8" title="1">for k := range config </span><span class="cov8" title="1">{
+        for k := range config </span><span class="cov8" title="1">{
                 m := hubCatalogNameRegex.FindStringSubmatch(k)
                 if len(m) &gt; 0 </span><span class="cov8" title="1">{
                         index := m[1]
@@ -21696,8 +21677,8 @@ func GetSecretsAttachedToPipelineRun(ctx context.Context, k kubeinteraction.Inte
 // if we don't sort by longest then if there two passwords with the same prefix
 // the shortest one will replace and would leak the end of the passwords of the longest after.
 func sortSecretsByLongests(values []ktypes.SecretValue) []ktypes.SecretValue <span class="cov8" title="1">{
-        ret := []ktypes.SecretValue{}
-        ret = append(ret, values...)
+        ret := make([]ktypes.SecretValue, len(values))
+        copy(ret, values)
         for i := 0; i &lt; len(ret); i++ </span><span class="cov8" title="1">{
                 for j := i + 1; j &lt; len(ret); j++ </span><span class="cov8" title="1">{
                         if len(ret[i].Value) &lt; len(ret[j].Value) </span><span class="cov8" title="1">{
@@ -21820,13 +21801,11 @@ func (rs repoSortRunStatus) Less(i, j int) bool <span class="cov8" title="1">{
 }
 
 func RepositorySortRunStatus(repoStatus []v1alpha1.RepositoryRunStatus) []v1alpha1.RepositoryRunStatus <span class="cov8" title="1">{
-        rrstatus := repoSortRunStatus{}
-        for _, status := range repoStatus </span><span class="cov8" title="1">{
-                rrstatus = append(rrstatus, status)
-        }</span>
-        <span class="cov8" title="1">sort.Sort(rrstatus)
-        return rrstatus</span>
-}
+        rrstatus := make(repoSortRunStatus, len(repoStatus))
+        copy(rrstatus, repoStatus)
+        sort.Sort(rrstatus)
+        return rrstatus
+}</span>
 </pre>
 		
 		<pre class="file" id="file145" style="display: none">package sort
@@ -22087,7 +22066,7 @@ func (s taskInfoSorter) Less(i, j int) bool <span class="cov8" title="1">{
 }</span>
 
 func TaskInfos(taskinfos map[string]pacv1alpha1.TaskInfos) []pacv1alpha1.TaskInfos <span class="cov8" title="1">{
-        tis := taskInfoSorter{}
+        tis := make(taskInfoSorter, 0, len(taskinfos))
         for _, ti := range taskinfos </span><span class="cov8" title="1">{
                 tis = append(tis, ti)
         }</span>
@@ -22550,15 +22529,15 @@ func (qm *QueueManager) RunningPipelineRuns(repo *v1alpha1.Repository) []string 
 }
 
 func sortPipelineRunsByCreationTimestamp(prs []tektonv1.PipelineRun) []*tektonv1.PipelineRun <span class="cov8" title="1">{
-        runTimeObj := []runtime.Object{}
+        runTimeObj := make([]runtime.Object, len(prs))
         for i := range prs </span><span class="cov8" title="1">{
-                runTimeObj = append(runTimeObj, &amp;prs[i])
+                runTimeObj[i] = &amp;prs[i]
         }</span>
         <span class="cov8" title="1">sort.ByField(creationTimestamp, runTimeObj)
-        sortedPRs := []*tektonv1.PipelineRun{}
-        for _, run := range runTimeObj </span><span class="cov8" title="1">{
+        sortedPRs := make([]*tektonv1.PipelineRun, len(runTimeObj))
+        for i, run := range runTimeObj </span><span class="cov8" title="1">{
                 pr, _ := run.(*tektonv1.PipelineRun)
-                sortedPRs = append(sortedPRs, pr)
+                sortedPRs[i] = pr
         }</span>
         <span class="cov8" title="1">return sortedPRs</span>
 }
@@ -22637,7 +22616,7 @@ func (s *prioritySemaphore) getLimit() int <span class="cov8" title="1">{
 }</span>
 
 func (s *prioritySemaphore) getCurrentPending() []string <span class="cov8" title="1">{
-        keys := []string{}
+        keys := make([]string, 0, len(s.pending.items))
         for _, item := range s.pending.items </span><span class="cov8" title="1">{
                 keys = append(keys, item.key)
         }</span>
@@ -22645,7 +22624,7 @@ func (s *prioritySemaphore) getCurrentPending() []string <span class="cov8" titl
 }
 
 func (s *prioritySemaphore) getCurrentRunning() []string <span class="cov8" title="1">{
-        keys := []string{}
+        keys := make([]string, 0, len(s.running))
         for k := range s.running </span><span class="cov8" title="1">{
                 keys = append(keys, k)
         }</span>
