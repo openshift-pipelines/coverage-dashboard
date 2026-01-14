@@ -141,7 +141,7 @@
 				
 				<option value="file42">github.com/tektoncd/chains/pkg/chains/storage/oci/simple.go (86.7%)</option>
 				
-				<option value="file43">github.com/tektoncd/chains/pkg/chains/storage/pubsub/pubsub.go (58.6%)</option>
+				<option value="file43">github.com/tektoncd/chains/pkg/chains/storage/pubsub/pubsub.go (79.3%)</option>
 				
 				<option value="file44">github.com/tektoncd/chains/pkg/chains/storage/storage.go (31.7%)</option>
 				
@@ -6973,13 +6973,13 @@ type Backend struct {
 }
 
 // NewStorageBackend returns a new Tekton StorageBackend that stores signatures on a TaskRun
-func NewStorageBackend(ctx context.Context, cfg config.Config) (*Backend, error) <span class="cov0" title="0">{
+func NewStorageBackend(ctx context.Context, cfg config.Config) (*Backend, error) <span class="cov8" title="1">{
         return &amp;Backend{
                 cfg: cfg,
         }, nil
 }</span>
 
-func (b *Backend) Type() string <span class="cov0" title="0">{
+func (b *Backend) Type() string <span class="cov8" title="1">{
         return StorageBackendPubSub
 }</span>
 
@@ -7027,7 +7027,7 @@ func (b *Backend) NewTopic(ctx context.Context) (*pubsub.Topic, error) <span cla
         topic := b.cfg.Storage.PubSub.Topic
         logger.Infof("Creating new %q pubsub producer for %q topic", provider, topic)
         switch provider </span>{
-        case PubSubProviderKafka:<span class="cov0" title="0">
+        case PubSubProviderKafka:<span class="cov8" title="1">
                 // The set of brokers in the Kafka cluster.
                 addrs := []string{b.cfg.Storage.PubSub.Kafka.BootstrapServers}
                 logger.Infof("Configuring Kafka brokers: %s", addrs)

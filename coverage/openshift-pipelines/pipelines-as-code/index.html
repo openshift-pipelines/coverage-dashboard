@@ -307,7 +307,7 @@
 				
 				<option value="file125">github.com/openshift-pipelines/pipelines-as-code/pkg/provider/gitlab/parse_payload.go (83.4%)</option>
 				
-				<option value="file126">github.com/openshift-pipelines/pipelines-as-code/pkg/provider/gitlab/task.go (95.9%)</option>
+				<option value="file126">github.com/openshift-pipelines/pipelines-as-code/pkg/provider/gitlab/task.go (87.8%)</option>
 				
 				<option value="file127">github.com/openshift-pipelines/pipelines-as-code/pkg/provider/metrics/metrics.go (80.0%)</option>
 				
@@ -19597,7 +19597,7 @@ func (v *Provider) GetTaskURI(_ context.Context, event *info.Event, uri string) 
         // Use the existing client if available, otherwise create a temporary one.
         // We avoid storing it to prevent side effects on the provider's state.
         <span class="cov8" title="1">client := v.gitlabClient
-        if client == nil </span><span class="cov8" title="1">{
+        if client == nil </span><span class="cov0" title="0">{
                 baseURL := fmt.Sprintf("%s://%s", extracted.Scheme, extracted.Host)
                 var clientErr error
                 client, clientErr = gl.NewClient(event.Provider.Token, gl.WithBaseURL(baseURL))
