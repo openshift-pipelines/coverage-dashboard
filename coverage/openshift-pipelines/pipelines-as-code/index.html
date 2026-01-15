@@ -287,7 +287,7 @@
 				
 				<option value="file115">github.com/openshift-pipelines/pipelines-as-code/pkg/provider/github/detect.go (91.7%)</option>
 				
-				<option value="file116">github.com/openshift-pipelines/pipelines-as-code/pkg/provider/github/github.go (88.2%)</option>
+				<option value="file116">github.com/openshift-pipelines/pipelines-as-code/pkg/provider/github/github.go (82.1%)</option>
 				
 				<option value="file117">github.com/openshift-pipelines/pipelines-as-code/pkg/provider/github/parse_payload.go (91.5%)</option>
 				
@@ -295,7 +295,7 @@
 				
 				<option value="file119">github.com/openshift-pipelines/pipelines-as-code/pkg/provider/github/repository.go (83.0%)</option>
 				
-				<option value="file120">github.com/openshift-pipelines/pipelines-as-code/pkg/provider/github/scope.go (87.2%)</option>
+				<option value="file120">github.com/openshift-pipelines/pipelines-as-code/pkg/provider/github/scope.go (90.0%)</option>
 				
 				<option value="file121">github.com/openshift-pipelines/pipelines-as-code/pkg/provider/github/status.go (68.7%)</option>
 				
@@ -16074,6 +16074,7 @@ import (
         "sync"
         "time"
 
+        "github.com/gobwas/glob"
         "github.com/google/go-github/v74/github"
         "github.com/jonboulle/clockwork"
         "github.com/openshift-pipelines/pipelines-as-code/pkg/apis/pipelinesascode/keys"
@@ -16699,8 +16700,18 @@ func ListRepos(ctx context.Context, v *Provider) ([]string, error) <span class="
 }
 
 func (v *Provider) CreateToken(ctx context.Context, repository []string, event *info.Event) (string, error) <span class="cov8" title="1">{
+        var appReposCache []*github.Repository
+
         for _, r := range repository </span><span class="cov8" title="1">{
-                split := strings.Split(r, "/")
+                // Check if this is a glob pattern
+                if strings.ContainsAny(r, "*?[") </span><span class="cov0" title="0">{
+                        if err := v.expandGlobAndAddRepoIDs(ctx, r, &amp;appReposCache); err != nil </span><span class="cov0" title="0">{
+                                v.Logger.Warn("failed to expand glob pattern %q: %v", r, err)
+                        }</span>
+                        <span class="cov0" title="0">continue</span>
+                }
+
+                <span class="cov8" title="1">split := strings.Split(r, "/")
                 infoData, _, err := wrapAPI(v, "get_repository", func() (*github.Repository, *github.Response, error) </span><span class="cov8" title="1">{
                         return v.Client().Repositories.Get(ctx, split[0], split[1])
                 }</span>)
@@ -16716,6 +16727,52 @@ func (v *Provider) CreateToken(ctx context.Context, repository []string, event *
                 return "", err
         }</span>
         <span class="cov8" title="1">return token, nil</span>
+}
+
+func (v *Provider) expandGlobAndAddRepoIDs(ctx context.Context, repoPattern string, cache *[]*github.Repository) error <span class="cov0" title="0">{
+        // We can skip error check here as all the glob compilation has been checked
+        // before this method is called.
+        reposToScope, _ := glob.Compile(repoPattern)
+
+        if *cache == nil </span><span class="cov0" title="0">{
+                repos, err := v.listAppRepos(ctx)
+                if err != nil </span><span class="cov0" title="0">{
+                        return err
+                }</span>
+                <span class="cov0" title="0">*cache = repos</span>
+        }
+
+        <span class="cov0" title="0">for _, repo := range *cache </span><span class="cov0" title="0">{
+                repoFullName := repo.GetFullName()
+                if reposToScope.Match(repoFullName) </span><span class="cov0" title="0">{
+                        v.RepositoryIDs = uniqueRepositoryID(v.RepositoryIDs, repo.GetID())
+                }</span>
+        }
+
+        <span class="cov0" title="0">return nil</span>
+}
+
+func (v *Provider) listAppRepos(ctx context.Context) ([]*github.Repository, error) <span class="cov0" title="0">{
+        var allRepos []*github.Repository
+
+        opt := &amp;github.ListOptions{PerPage: v.PaginedNumber}
+        for </span><span class="cov0" title="0">{
+                repoList, resp, err := wrapAPI(v, "list_app_repos", func() (*github.ListRepositories, *github.Response, error) </span><span class="cov0" title="0">{
+                        return v.Client().Apps.ListRepos(ctx, opt)
+                }</span>)
+                <span class="cov0" title="0">if err != nil </span><span class="cov0" title="0">{
+                        return nil, fmt.Errorf("failed to list app repos: %w", err)
+                }</span>
+
+                <span class="cov0" title="0">allRepos = append(allRepos, repoList.Repositories...)
+
+                if resp.NextPage == 0 </span><span class="cov0" title="0">{
+                        break</span>
+                }
+                <span class="cov0" title="0">opt.Page = resp.NextPage</span>
+        }
+
+        <span class="cov0" title="0">return allRepos, nil</span>
 }
 
 func uniqueRepositoryID(repoIDs []int64, id int64) []int64 <span class="cov8" title="1">{
@@ -17753,6 +17810,7 @@ import (
         "net/url"
         "strings"
 
+        "github.com/gobwas/glob"
         "github.com/openshift-pipelines/pipelines-as-code/pkg/apis/pipelinesascode/v1alpha1"
         "github.com/openshift-pipelines/pipelines-as-code/pkg/events"
         "github.com/openshift-pipelines/pipelines-as-code/pkg/params"
@@ -17770,7 +17828,7 @@ func ScopeTokenToListOfRepos(ctx context.Context, vcx provider.Interface, pacInf
                 listRepos bool
                 token     string
         )
-        listURLs := map[string]string{}
+        listURLs := []string{}
         repoListToScopeToken := []string{}
 
         // This is a Global config to provide list of repos to scope token
@@ -17780,6 +17838,14 @@ func ScopeTokenToListOfRepos(ctx context.Context, vcx provider.Interface, pacInf
                         if configValueS == "" </span><span class="cov0" title="0">{
                                 continue</span>
                         }
+                        // May or may not be a glob
+                        <span class="cov8" title="1">if _, err := glob.Compile(configValueS); err != nil </span><span class="cov8" title="1">{
+                                msg := fmt.Sprintf("invalid repo glob specified %s", configValueS)
+                                eventEmitter.EmitMessage(nil, zap.ErrorLevel, "InvalidRepoGlobSpecified", msg)
+
+                                return "", errors.New(msg)
+                        }</span>
+
                         <span class="cov8" title="1">repoListToScopeToken = append(repoListToScopeToken, configValueS)</span>
                 }
                 <span class="cov8" title="1">listRepos = true
@@ -17796,15 +17862,30 @@ func ScopeTokenToListOfRepos(ctx context.Context, vcx provider.Interface, pacInf
                         if err != nil </span><span class="cov0" title="0">{
                                 return "", err
                         }</span>
-                        <span class="cov8" title="1">listURLs[splitData[1]+"/"+splitData[2]] = splitData[1] + "/" + splitData[2]</span>
+                        <span class="cov8" title="1">listURLs = append(listURLs, splitData[1]+"/"+splitData[2])</span>
                 }
                 <span class="cov8" title="1">for i := range repo.Spec.Settings.GithubAppTokenScopeRepos </span><span class="cov8" title="1">{
-                        if _, ok := listURLs[repo.Spec.Settings.GithubAppTokenScopeRepos[i]]; !ok </span><span class="cov8" title="1">{
-                                msg := fmt.Sprintf("failed to scope GitHub token as repo %s does not exist in namespace %s", repo.Spec.Settings.GithubAppTokenScopeRepos[i], ns)
+                        // May or may not be a glob
+                        repoToScope, err := glob.Compile(repo.Spec.Settings.GithubAppTokenScopeRepos[i])
+                        if err != nil </span><span class="cov8" title="1">{
+                                msg := fmt.Sprintf("invalid repo glob specified %s", repo.Spec.Settings.GithubAppTokenScopeRepos[i])
+                                eventEmitter.EmitMessage(nil, zap.ErrorLevel, "InvalidRepoGlobSpecified", msg)
+
+                                return "", errors.New(msg)
+                        }</span>
+                        <span class="cov8" title="1">globMatchFound := false
+                        // Match glob to repos list.
+                        for _, repoKey := range listURLs </span><span class="cov8" title="1">{
+                                if repoToScope.Match(repoKey) </span><span class="cov8" title="1">{
+                                        repoListToScopeToken = append(repoListToScopeToken, repoKey)
+                                        globMatchFound = true
+                                }</span>
+                        }
+                        <span class="cov8" title="1">if !globMatchFound </span><span class="cov8" title="1">{
+                                msg := fmt.Sprintf("failed to scope GitHub token as repo with pattern %s does not exist in namespace %s", repo.Spec.Settings.GithubAppTokenScopeRepos[i], ns)
                                 eventEmitter.EmitMessage(nil, zap.ErrorLevel, "RepoDoesNotExistInNamespace", msg)
                                 return "", errors.New(msg)
                         }</span>
-                        <span class="cov8" title="1">repoListToScopeToken = append(repoListToScopeToken, repo.Spec.Settings.GithubAppTokenScopeRepos[i])</span>
                 }
                 // When the global configuration is not set then check for secret-github-app-token-scoped key for the repo level configuration
                 <span class="cov8" title="1">if pacInfo.SecretGHAppRepoScoped &amp;&amp; pacInfo.SecretGhAppTokenScopedExtraRepos == "" </span><span class="cov8" title="1">{
