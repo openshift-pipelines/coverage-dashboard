@@ -161,7 +161,7 @@
 				
 				<option value="file52">github.com/tektoncd/cli/pkg/pipelinerun/sort/by_start_time.go (87.5%)</option>
 				
-				<option value="file53">github.com/tektoncd/cli/pkg/pipelinerun/tracker.go (71.1%)</option>
+				<option value="file53">github.com/tektoncd/cli/pkg/pipelinerun/tracker.go (70.9%)</option>
 				
 				<option value="file54">github.com/tektoncd/cli/pkg/plugins/plugins.go (85.0%)</option>
 				
@@ -173,7 +173,7 @@
 				
 				<option value="file58">github.com/tektoncd/cli/pkg/pods/fake/stream.go (0.0%)</option>
 				
-				<option value="file59">github.com/tektoncd/cli/pkg/pods/pod.go (78.6%)</option>
+				<option value="file59">github.com/tektoncd/cli/pkg/pods/pod.go (78.3%)</option>
 				
 				<option value="file60">github.com/tektoncd/cli/pkg/pods/pod_template.go (100.0%)</option>
 				
@@ -5382,6 +5382,7 @@ package pipelinerun
 
 import (
         "context"
+        "errors"
         "sync"
         "time"
 
@@ -5434,6 +5435,11 @@ func (t *Tracker) Monitor(allowed []string) &lt;-chan []taskrunpkg.Run <span cla
 
         genericInformer, _ := factory.ForResource(*gvr)
         informer := genericInformer.Informer()
+
+        // Set a custom watch error handler that ignores context.Canceled errors
+        // to prevent "Failed to watch" log messages when the informer is stopped intentionally
+        _ = informer.SetWatchErrorHandlerWithContext(watchErrorHandler)
+
         mu := &amp;sync.Mutex{}
         stopC := make(chan struct{})
         trC := make(chan []taskrunpkg.Run)
@@ -5520,7 +5526,15 @@ func pipelinerunOpts(name string) func(opts *metav1.ListOptions) <span class="co
         return func(opts *metav1.ListOptions) </span><span class="cov8" title="1">{
                 opts.FieldSelector = fields.OneTermEqualSelector("metadata.name", name).String()
         }</span>
+}
 
+// watchErrorHandler is a custom watch error handler that filters out context.Canceled errors
+// to prevent "Failed to watch" log messages when the informer is stopped intentionally.
+// Other errors are passed to the default handler.
+func watchErrorHandler(ctx context.Context, r *cache.Reflector, err error) <span class="cov8" title="1">{
+        if !errors.Is(err, context.Canceled) </span><span class="cov0" title="0">{
+                cache.DefaultWatchErrorHandler(ctx, r, err)
+        }</span>
 }
 
 // handles changes to pipelinerun and pushes the Run information to the
@@ -5982,6 +5996,7 @@ package pods
 
 import (
         "context"
+        "errors"
         "fmt"
         "io"
         "sync"
@@ -6081,7 +6096,12 @@ func (p *Pod) watcher(stopC chan struct{}, result *podResult, mu *sync.Mutex) <s
                 }</span>
         }
 
-        <span class="cov8" title="1">_, err := factory.Core().V1().Pods().Informer().AddEventHandler(
+        <span class="cov8" title="1">informer := factory.Core().V1().Pods().Informer()
+        // Set a custom watch error handler that ignores context.Canceled errors
+        // to prevent "Failed to watch" log messages when the informer is stopped intentionally
+        _ = informer.SetWatchErrorHandlerWithContext(watchErrorHandler)
+
+        _, err := informer.AddEventHandler(
                 cache.ResourceEventHandlerFuncs{
                         AddFunc: func(obj interface{}) </span><span class="cov8" title="1">{
                                 select </span>{
@@ -6119,6 +6139,15 @@ func (p *Pod) watcher(stopC chan struct{}, result *podResult, mu *sync.Mutex) <s
 func podOpts(name string) func(opts *metav1.ListOptions) <span class="cov8" title="1">{
         return func(opts *metav1.ListOptions) </span><span class="cov8" title="1">{
                 opts.FieldSelector = fields.OneTermEqualSelector("metadata.name", name).String()
+        }</span>
+}
+
+// watchErrorHandler is a custom watch error handler that filters out context.Canceled errors
+// to prevent "Failed to watch" log messages when the informer is stopped intentionally.
+// Other errors are passed to the default handler.
+func watchErrorHandler(ctx context.Context, r *cache.Reflector, err error) <span class="cov8" title="1">{
+        if !errors.Is(err, context.Canceled) </span><span class="cov0" title="0">{
+                cache.DefaultWatchErrorHandler(ctx, r, err)
         }</span>
 }
 
