@@ -77,7 +77,7 @@
 				
 				<option value="file10">github.com/openshift-pipelines/pipelines-as-code/pkg/apis/pipelinesascode/v1alpha1/types_llm.go (0.0%)</option>
 				
-				<option value="file11">github.com/openshift-pipelines/pipelines-as-code/pkg/cel/cel.go (80.8%)</option>
+				<option value="file11">github.com/openshift-pipelines/pipelines-as-code/pkg/cel/cel.go (58.8%)</option>
 				
 				<option value="file12">github.com/openshift-pipelines/pipelines-as-code/pkg/changedfiles/changedfiles.go (100.0%)</option>
 				
@@ -273,9 +273,9 @@
 				
 				<option value="file108">github.com/openshift-pipelines/pipelines-as-code/pkg/provider/gitea/detect.go (100.0%)</option>
 				
-				<option value="file109">github.com/openshift-pipelines/pipelines-as-code/pkg/provider/gitea/gitea.go (69.7%)</option>
+				<option value="file109">github.com/openshift-pipelines/pipelines-as-code/pkg/provider/gitea/forgejostructs/types.go (0.0%)</option>
 				
-				<option value="file110">github.com/openshift-pipelines/pipelines-as-code/pkg/provider/gitea/giteastructs/types.go (0.0%)</option>
+				<option value="file110">github.com/openshift-pipelines/pipelines-as-code/pkg/provider/gitea/gitea.go (69.7%)</option>
 				
 				<option value="file111">github.com/openshift-pipelines/pipelines-as-code/pkg/provider/gitea/parse_payload.go (0.0%)</option>
 				
@@ -359,7 +359,7 @@
 				
 				<option value="file151">github.com/openshift-pipelines/pipelines-as-code/pkg/sync/semaphore.go (91.4%)</option>
 				
-				<option value="file152">github.com/openshift-pipelines/pipelines-as-code/pkg/templates/templating.go (88.9%)</option>
+				<option value="file152">github.com/openshift-pipelines/pipelines-as-code/pkg/templates/templating.go (90.5%)</option>
 				
 				<option value="file153">github.com/openshift-pipelines/pipelines-as-code/pkg/webhook/controller.go (0.0%)</option>
 				
@@ -1879,6 +1879,7 @@ func GetProviderDefaultAPIURL(provider string) string <span class="cov0" title="
 		<pre class="file" id="file11" style="display: none">package cel
 
 import (
+        "bytes"
         "encoding/json"
         "fmt"
 
@@ -1916,15 +1917,30 @@ func evaluate(expr string, env *cel.Env, data map[string]any) (ref.Val, error) <
 // / pacParams, it will output a Cel value or an error if selectedjm.
 func Value(query string, body any, headers, pacParams map[string]string, changedFiles map[string]any) (ref.Val, error) <span class="cov8" title="1">{
         // Marshal/Unmarshal the body to a map[string]any so we can access it from the CEL
-        nbody, err := json.Marshal(body)
-        if err != nil </span><span class="cov0" title="0">{
-                return nil, err
-        }</span>
-        <span class="cov8" title="1">var jsonMap map[string]any
-        err = json.Unmarshal(nbody, &amp;jsonMap)
-        if err != nil </span><span class="cov0" title="0">{
-                return nil, err
-        }</span>
+        var jsonMap map[string]any
+        switch b := body.(type) </span>{
+        case nil:<span class="cov8" title="1">
+                jsonMap = map[string]any{}</span>
+        case map[string]any:<span class="cov8" title="1">
+                jsonMap = b</span>
+        default:<span class="cov0" title="0">
+                nbody, err := json.Marshal(body)
+                if err != nil </span><span class="cov0" title="0">{
+                        return nil, err
+                }</span>
+                <span class="cov0" title="0">trimmed := bytes.TrimSpace(nbody)
+                if len(trimmed) == 0 || bytes.Equal(trimmed, []byte("null")) </span><span class="cov0" title="0">{
+                        jsonMap = map[string]any{}
+                }</span> else<span class="cov0" title="0"> {
+                        err = json.Unmarshal(nbody, &amp;jsonMap)
+                        if err != nil </span><span class="cov0" title="0">{
+                                return nil, err
+                        }</span>
+                        <span class="cov0" title="0">if jsonMap == nil </span><span class="cov0" title="0">{
+                                jsonMap = map[string]any{}
+                        }</span>
+                }
+        }
 
         <span class="cov8" title="1">mapStrDyn := types.NewMapType(types.StringType, types.DynType)
         celDec, _ := cel.NewEnv(
@@ -13825,11 +13841,11 @@ import (
         "net/http"
         "strings"
 
-        "code.gitea.io/sdk/gitea"
+        "codeberg.org/mvdkleijn/forgejo-sdk/forgejo/v2"
         "github.com/openshift-pipelines/pipelines-as-code/pkg/acl"
         "github.com/openshift-pipelines/pipelines-as-code/pkg/params/info"
         "github.com/openshift-pipelines/pipelines-as-code/pkg/policy"
-        giteaStructs "github.com/openshift-pipelines/pipelines-as-code/pkg/provider/gitea/giteastructs"
+        "github.com/openshift-pipelines/pipelines-as-code/pkg/provider/gitea/forgejostructs"
 )
 
 func (v *Provider) CheckPolicyAllowing(_ context.Context, event *info.Event, allowedTeams []string) (bool, string) <span class="cov8" title="1">{
@@ -13837,7 +13853,7 @@ func (v *Provider) CheckPolicyAllowing(_ context.Context, event *info.Event, all
                 return true, ""
         }</span>
         // TODO: caching
-        <span class="cov8" title="1">orgTeams, resp, err := v.Client().ListOrgTeams(event.Organization, gitea.ListTeamsOptions{})
+        <span class="cov8" title="1">orgTeams, resp, err := v.Client().ListOrgTeams(event.Organization, forgejo.ListTeamsOptions{})
         if resp.StatusCode == http.StatusNotFound </span><span class="cov8" title="1">{
                 // we explicitly disallow the policy when there is no team on org
                 return false, fmt.Sprintf("no teams on org %s", event.Organization)
@@ -13924,14 +13940,14 @@ func (v *Provider) aclAllowedOkToTestFromAnOwner(ctx context.Context, event *inf
         }</span>
 
         <span class="cov8" title="1">switch event := revent.Event.(type) </span>{
-        case *giteaStructs.IssueCommentPayload:<span class="cov8" title="1">
+        case *forgejostructs.IssueCommentPayload:<span class="cov8" title="1">
                 // if we don't need to check old comments, then on issue comment we
                 // need to check if comment have /ok-to-test and is from allowed user
                 if !v.pacInfo.RememberOKToTest </span><span class="cov8" title="1">{
                         return v.aclAllowedOkToTestCurrentComment(ctx, revent, event.Comment.ID)
                 }</span>
                 <span class="cov8" title="1">revent.URL = event.Issue.URL</span>
-        case *giteaStructs.PullRequestPayload:<span class="cov8" title="1">
+        case *forgejostructs.PullRequestPayload:<span class="cov8" title="1">
                 // if we don't need to check old comments, then on push event we don't need
                 // to check anything for the non-allowed user
                 if !v.pacInfo.RememberOKToTest </span><span class="cov8" title="1">{
@@ -14039,14 +14055,14 @@ func (v *Provider) getFileFromDefaultBranch(ctx context.Context, path string, ru
 
 // GetStringPullRequestComment return the comment if we find a regexp in one of
 // the comments text of a pull request.
-func (v *Provider) GetStringPullRequestComment(_ context.Context, runevent *info.Event, reg string) ([]*gitea.Comment, error) <span class="cov8" title="1">{
-        var ret []*gitea.Comment
+func (v *Provider) GetStringPullRequestComment(_ context.Context, runevent *info.Event, reg string) ([]*forgejo.Comment, error) <span class="cov8" title="1">{
+        var ret []*forgejo.Comment
         prNumber, err := convertPullRequestURLtoNumber(runevent.URL)
         if err != nil </span><span class="cov0" title="0">{
                 return nil, err
         }</span>
 
-        <span class="cov8" title="1">comments, _, err := v.Client().ListIssueComments(runevent.Organization, runevent.Repository, int64(prNumber), gitea.ListIssueCommentOptions{})
+        <span class="cov8" title="1">comments, _, err := v.Client().ListIssueComments(runevent.Organization, runevent.Repository, int64(prNumber), forgejo.ListIssueCommentOptions{})
         if err != nil </span><span class="cov0" title="0">{
                 return nil, err
         }</span>
@@ -14068,7 +14084,7 @@ import (
 
         "github.com/openshift-pipelines/pipelines-as-code/pkg/params/triggertype"
         "github.com/openshift-pipelines/pipelines-as-code/pkg/provider"
-        giteaStructs "github.com/openshift-pipelines/pipelines-as-code/pkg/provider/gitea/giteastructs"
+        "github.com/openshift-pipelines/pipelines-as-code/pkg/provider/gitea/forgejostructs"
         "go.uber.org/zap"
 )
 
@@ -14112,17 +14128,17 @@ func (v *Provider) Detect(req *http.Request, payload string, logger *zap.Sugared
 // filtering out the events that are not supported.
 func detectTriggerTypeFromPayload(ghEventType string, eventInt any) (triggertype.Trigger, string) <span class="cov8" title="1">{
         switch event := eventInt.(type) </span>{
-        case *giteaStructs.PushPayload:<span class="cov8" title="1">
+        case *forgejostructs.PushPayload:<span class="cov8" title="1">
                 if event.Pusher != nil </span><span class="cov8" title="1">{
                         return triggertype.Push, ""
                 }</span>
                 <span class="cov8" title="1">return "", "invalid payload: no pusher in event"</span>
-        case *giteaStructs.PullRequestPayload:<span class="cov8" title="1">
+        case *forgejostructs.PullRequestPayload:<span class="cov8" title="1">
                 if provider.Valid(string(event.Action), append(pullRequestOpenSyncEvent, pullRequestLabelUpdated, pullRequestLabelClosed)) </span><span class="cov8" title="1">{
                         return triggertype.PullRequest, ""
                 }</span>
                 <span class="cov8" title="1">return "", fmt.Sprintf("pull_request: unsupported action \"%s\"", event.Action)</span>
-        case *giteaStructs.IssueCommentPayload:<span class="cov8" title="1">
+        case *forgejostructs.IssueCommentPayload:<span class="cov8" title="1">
                 if event.Action == "created" &amp;&amp;
                         event.Issue.PullRequest != nil &amp;&amp;
                         event.Issue.State == "open" </span><span class="cov8" title="1">{
@@ -14144,512 +14160,14 @@ func detectTriggerTypeFromPayload(ghEventType string, eventInt any) (triggertype
 }
 </pre>
 		
-		<pre class="file" id="file109" style="display: none">package gitea
-
-import (
-        "context"
-        "encoding/base64"
-        "encoding/json"
-        "fmt"
-        "net/http"
-        "path"
-        "regexp"
-        "strconv"
-        "strings"
-        "time"
-
-        "code.gitea.io/sdk/gitea"
-        "github.com/openshift-pipelines/pipelines-as-code/pkg/apis/pipelinesascode/v1alpha1"
-        "github.com/openshift-pipelines/pipelines-as-code/pkg/changedfiles"
-        "github.com/openshift-pipelines/pipelines-as-code/pkg/events"
-        "github.com/openshift-pipelines/pipelines-as-code/pkg/opscomments"
-        "github.com/openshift-pipelines/pipelines-as-code/pkg/params"
-        "github.com/openshift-pipelines/pipelines-as-code/pkg/params/info"
-        "github.com/openshift-pipelines/pipelines-as-code/pkg/params/triggertype"
-        "github.com/openshift-pipelines/pipelines-as-code/pkg/provider"
-        providerMetrics "github.com/openshift-pipelines/pipelines-as-code/pkg/provider/metrics"
-        "go.uber.org/zap"
-)
-
-const (
-        taskStatusTemplate = `
-&lt;table&gt;
-  &lt;tr&gt;&lt;th&gt;Status&lt;/th&gt;&lt;th&gt;Duration&lt;/th&gt;&lt;th&gt;Name&lt;/th&gt;&lt;/tr&gt;
-
-{{- range $taskrun := .TaskRunList }}
-&lt;tr&gt;
-&lt;td&gt;{{ formatCondition $taskrun.PipelineRunTaskRunStatus.Status.Conditions }}&lt;/td&gt;
-&lt;td&gt;{{ formatDuration $taskrun.PipelineRunTaskRunStatus.Status.StartTime $taskrun.Status.CompletionTime }}&lt;/td&gt;&lt;td&gt;
-
-{{ $taskrun.ConsoleLogURL }}
-
-&lt;/td&gt;&lt;/tr&gt;
-{{- end }}
-&lt;/table&gt;`
-)
-
-// validate the struct to interface.
-var _ provider.Interface = (*Provider)(nil)
-
-type Provider struct {
-        giteaClient      *gitea.Client
-        Logger           *zap.SugaredLogger
-        pacInfo          *info.PacOpts
-        Token            *string
-        giteaInstanceURL string
-        // only exposed for e2e tests
-        Password     string
-        repo         *v1alpha1.Repository
-        eventEmitter *events.EventEmitter
-        run          *params.Run
-        triggerEvent string
-}
-
-func (v *Provider) Client() *gitea.Client <span class="cov8" title="1">{
-        providerMetrics.RecordAPIUsage(
-                v.Logger,
-                // URL used instead of "gitea" to differentiate in the case of a CI cluster which
-                // serves multiple Gitea instances
-                v.giteaInstanceURL,
-                v.triggerEvent,
-                v.repo,
-        )
-        return v.giteaClient
-}</span>
-
-func (v *Provider) SetGiteaClient(client *gitea.Client) <span class="cov0" title="0">{
-        v.giteaClient = client
-}</span>
-
-func (v *Provider) CreateComment(_ context.Context, event *info.Event, commit, updateMarker string) error <span class="cov8" title="1">{
-        if v.giteaClient == nil </span><span class="cov8" title="1">{
-                return fmt.Errorf("no gitea client has been initialized")
-        }</span>
-
-        <span class="cov8" title="1">if event.PullRequestNumber == 0 </span><span class="cov8" title="1">{
-                return fmt.Errorf("create comment only works on pull requests")
-        }</span>
-
-        // List comments of the PR
-        <span class="cov8" title="1">if updateMarker != "" </span><span class="cov8" title="1">{
-                comments, _, err := v.Client().ListIssueComments(event.Organization, event.Repository, int64(event.PullRequestNumber), gitea.ListIssueCommentOptions{})
-                if err != nil </span><span class="cov0" title="0">{
-                        return err
-                }</span>
-
-                <span class="cov8" title="1">re := regexp.MustCompile(updateMarker)
-                for _, comment := range comments </span><span class="cov8" title="1">{
-                        if re.MatchString(comment.Body) </span><span class="cov8" title="1">{
-                                _, _, err := v.Client().EditIssueComment(event.Organization, event.Repository, comment.ID, gitea.EditIssueCommentOption{
-                                        Body: commit,
-                                })
-                                return err
-                        }</span>
-                }
-        }
-
-        <span class="cov8" title="1">_, _, err := v.Client().CreateIssueComment(event.Organization, event.Repository, int64(event.PullRequestNumber), gitea.CreateIssueCommentOption{
-                Body: commit,
-        })
-
-        return err</span>
-}
-
-func (v *Provider) SetPacInfo(pacInfo *info.PacOpts) <span class="cov0" title="0">{
-        v.pacInfo = pacInfo
-}</span>
-
-// GetTaskURI TODO: Implement ME.
-func (v *Provider) GetTaskURI(_ context.Context, _ *info.Event, _ string) (bool, string, error) <span class="cov0" title="0">{
-        return false, "", nil
-}</span>
-
-func (v *Provider) SetLogger(logger *zap.SugaredLogger) <span class="cov0" title="0">{
-        v.Logger = logger
-}</span>
-
-func (v *Provider) Validate(_ context.Context, _ *params.Run, _ *info.Event) error <span class="cov0" title="0">{
-        // TODO: figure out why gitea doesn't work with mac validation as github which seems to be the same
-        v.Logger.Debug("no secret and signature found, skipping validation for gitea")
-        return nil
-}</span>
-
-func convertPullRequestURLtoNumber(pullRequest string) (int, error) <span class="cov8" title="1">{
-        prNumber, err := strconv.Atoi(path.Base(pullRequest))
-        if err != nil </span><span class="cov0" title="0">{
-                return -1, fmt.Errorf("bad pull request number html_url number: %w", err)
-        }</span>
-        <span class="cov8" title="1">return prNumber, nil</span>
-}
-
-func (v *Provider) GetConfig() *info.ProviderConfig <span class="cov0" title="0">{
-        return &amp;info.ProviderConfig{
-                TaskStatusTMPL: taskStatusTemplate,
-                APIURL:         v.giteaInstanceURL,
-                Name:           "gitea",
-                SkipEmoji:      true,
-        }
-}</span>
-
-func (v *Provider) SetClient(_ context.Context, run *params.Run, runevent *info.Event, repo *v1alpha1.Repository, emitter *events.EventEmitter) error <span class="cov0" title="0">{
-        var err error
-        apiURL := runevent.Provider.URL
-        // password is not exposed to CRD, it's only used from the e2e tests
-        if v.Password != "" &amp;&amp; runevent.Provider.User != "" </span><span class="cov0" title="0">{
-                v.giteaClient, err = gitea.NewClient(apiURL, gitea.SetBasicAuth(runevent.Provider.User, v.Password))
-        }</span> else<span class="cov0" title="0"> {
-                if runevent.Provider.Token == "" </span><span class="cov0" title="0">{
-                        return fmt.Errorf("no git_provider.secret has been set in the repo crd")
-                }</span>
-                <span class="cov0" title="0">v.giteaClient, err = gitea.NewClient(apiURL, gitea.SetToken(runevent.Provider.Token))</span>
-        }
-        <span class="cov0" title="0">if err != nil </span><span class="cov0" title="0">{
-                return err
-        }</span>
-
-        // Added log for security audit purposes to log client access when a token is used
-        <span class="cov0" title="0">run.Clients.Log.Infof("gitea: initialized API client with provided credentials user=%s providerURL=%s", runevent.Provider.User, apiURL)
-
-        v.giteaInstanceURL = runevent.Provider.URL
-        v.eventEmitter = emitter
-        v.repo = repo
-        v.run = run
-        v.triggerEvent = runevent.EventType
-        return nil</span>
-}
-
-func (v *Provider) CreateStatus(_ context.Context, event *info.Event, statusOpts provider.StatusOpts) error <span class="cov8" title="1">{
-        if v.giteaClient == nil </span><span class="cov0" title="0">{
-                return fmt.Errorf("cannot set status on gitea no token or url set")
-        }</span>
-        <span class="cov8" title="1">switch statusOpts.Conclusion </span>{
-        case "success":<span class="cov8" title="1">
-                statusOpts.Title = "Success"
-                statusOpts.Summary = "has &lt;b&gt;successfully&lt;/b&gt; validated your commit."</span>
-        case "failure":<span class="cov8" title="1">
-                statusOpts.Title = "Failed"
-                statusOpts.Summary = "has &lt;b&gt;failed&lt;/b&gt;."</span>
-        case "pending":<span class="cov8" title="1">
-                // for concurrency set title as pending
-                if statusOpts.Title == "" </span><span class="cov8" title="1">{
-                        statusOpts.Title = "Pending"
-                }</span>
-                // for unauthorized user set title as Pending approval
-                <span class="cov8" title="1">statusOpts.Summary = "is skipping this commit."</span>
-        case "neutral":<span class="cov8" title="1">
-                statusOpts.Title = "Unknown"
-                statusOpts.Summary = "doesn't know what happened with this commit."</span>
-        }
-
-        <span class="cov8" title="1">if statusOpts.Status == "in_progress" </span><span class="cov8" title="1">{
-                statusOpts.Title = "CI has Started"
-                statusOpts.Summary = "is running.\n"
-        }</span>
-
-        <span class="cov8" title="1">onPr := ""
-        if statusOpts.PipelineRunName != "" </span><span class="cov8" title="1">{
-                onPr = fmt.Sprintf("/%s", statusOpts.PipelineRunName)
-        }</span>
-        // gitea show weirdly the &lt;br&gt;
-        <span class="cov8" title="1">statusOpts.Summary = fmt.Sprintf("%s%s %s", v.pacInfo.ApplicationName, onPr, statusOpts.Summary)
-
-        return v.createStatusCommit(event, v.pacInfo, statusOpts)</span>
-}
-
-func (v *Provider) createStatusCommit(event *info.Event, pacopts *info.PacOpts, status provider.StatusOpts) error <span class="cov8" title="1">{
-        state := gitea.StatusState(status.Conclusion)
-        switch status.Conclusion </span>{
-        case "neutral":<span class="cov8" title="1">
-                state = gitea.StatusSuccess</span> // We don't have a choice than setting as success, no pending here.c
-        case "pending":<span class="cov8" title="1">
-                if status.Title != "" </span><span class="cov8" title="1">{
-                        state = gitea.StatusPending
-                }</span>
-        }
-        <span class="cov8" title="1">if status.Status == "in_progress" </span><span class="cov8" title="1">{
-                state = gitea.StatusPending
-        }</span>
-
-        <span class="cov8" title="1">gStatus := gitea.CreateStatusOption{
-                State:       state,
-                TargetURL:   status.DetailsURL,
-                Description: status.Title,
-                Context:     provider.GetCheckName(status, pacopts),
-        }
-        if _, _, err := v.Client().CreateStatus(event.Organization, event.Repository, event.SHA, gStatus); err != nil </span><span class="cov0" title="0">{
-                return err
-        }</span>
-
-        <span class="cov8" title="1">eventType := triggertype.IsPullRequestType(event.EventType)
-        if opscomments.IsAnyOpsEventType(eventType.String()) </span><span class="cov8" title="1">{
-                eventType = triggertype.PullRequest
-        }</span>
-        <span class="cov8" title="1">if status.Text != "" &amp;&amp; (eventType == triggertype.PullRequest || event.TriggerTarget == triggertype.PullRequest) </span><span class="cov8" title="1">{
-                status.Text = strings.ReplaceAll(strings.TrimSpace(status.Text), "&lt;br&gt;", "\n")
-                _, _, err := v.Client().CreateIssueComment(event.Organization, event.Repository,
-                        int64(event.PullRequestNumber), gitea.CreateIssueCommentOption{
-                                Body: fmt.Sprintf("%s\n%s", status.Summary, status.Text),
-                        },
-                )
-                if err != nil </span><span class="cov0" title="0">{
-                        return err
-                }</span>
-        }
-        <span class="cov8" title="1">return nil</span>
-}
-
-func (v *Provider) GetTektonDir(_ context.Context, event *info.Event, path, provenance string) (string, error) <span class="cov8" title="1">{
-        // default set provenance from the SHA
-        revision := event.SHA
-        if provenance == "default_branch" </span><span class="cov0" title="0">{
-                revision = event.DefaultBranch
-                v.Logger.Infof("Using PipelineRun definition from default_branch: %s", event.DefaultBranch)
-        }</span> else<span class="cov8" title="1"> {
-                v.Logger.Infof("Using PipelineRun definition from source %s commit SHA: %s", event.TriggerTarget.String(), event.SHA)
-        }</span>
-
-        <span class="cov8" title="1">tektonDirSha := ""
-        opt := gitea.ListTreeOptions{
-                Ref:       revision,
-                Recursive: false,
-        }
-        rootobjects, _, err := v.Client().GetTrees(event.Organization, event.Repository, opt)
-        if err != nil </span><span class="cov0" title="0">{
-                return "", err
-        }</span>
-        <span class="cov8" title="1">for _, object := range rootobjects.Entries </span><span class="cov8" title="1">{
-                if object.Path == path </span><span class="cov8" title="1">{
-                        if object.Type != "tree" </span><span class="cov0" title="0">{
-                                return "", fmt.Errorf("%s has been found but is not a directory", path)
-                        }</span>
-                        <span class="cov8" title="1">tektonDirSha = object.SHA</span>
-                }
-        }
-
-        // If we didn't find a .tekton directory then just silently ignore the error.
-        <span class="cov8" title="1">if tektonDirSha == "" </span><span class="cov0" title="0">{
-                return "", nil
-        }</span>
-        // Get all files in the .tekton directory recursively
-        // TODO: figure out if there is a object limit we need to handle here
-        <span class="cov8" title="1">opts := gitea.ListTreeOptions{Recursive: false, Ref: tektonDirSha}
-        tektonDirObjects, _, err := v.Client().GetTrees(event.Organization, event.Repository, opts)
-        if err != nil </span><span class="cov0" title="0">{
-                return "", err
-        }</span>
-        <span class="cov8" title="1">return v.concatAllYamlFiles(tektonDirObjects.Entries, event)</span>
-}
-
-func (v *Provider) concatAllYamlFiles(objects []gitea.GitEntry, event *info.Event) (string,
-        error,
-) <span class="cov8" title="1">{
-        var allTemplates string
-
-        for _, value := range objects </span><span class="cov8" title="1">{
-                if strings.HasSuffix(value.Path, ".yaml") ||
-                        strings.HasSuffix(value.Path, ".yml") </span><span class="cov8" title="1">{
-                        data, err := v.getObject(value.SHA, event)
-                        if err != nil </span><span class="cov0" title="0">{
-                                return "", err
-                        }</span>
-                        <span class="cov8" title="1">if err := provider.ValidateYaml(data, value.Path); err != nil </span><span class="cov8" title="1">{
-                                return "", err
-                        }</span>
-                        <span class="cov0" title="0">if allTemplates != "" &amp;&amp; !strings.HasPrefix(string(data), "---") </span><span class="cov0" title="0">{
-                                allTemplates += "---"
-                        }</span>
-                        <span class="cov0" title="0">allTemplates += "\n" + string(data) + "\n"</span>
-                }
-        }
-        <span class="cov0" title="0">return allTemplates, nil</span>
-}
-
-func (v *Provider) getObject(sha string, event *info.Event) ([]byte, error) <span class="cov8" title="1">{
-        blob, _, err := v.Client().GetBlob(event.Organization, event.Repository, sha)
-        if err != nil </span><span class="cov0" title="0">{
-                return nil, err
-        }</span>
-        <span class="cov8" title="1">decoded, err := base64.StdEncoding.DecodeString(blob.Content)
-        if err != nil </span><span class="cov0" title="0">{
-                return nil, err
-        }</span>
-        <span class="cov8" title="1">return decoded, err</span>
-}
-
-func (v *Provider) GetFileInsideRepo(_ context.Context, runevent *info.Event, path, target string) (string, error) <span class="cov8" title="1">{
-        ref := runevent.SHA
-        if target != "" </span><span class="cov8" title="1">{
-                ref = runevent.BaseBranch
-        }</span>
-
-        <span class="cov8" title="1">content, _, err := v.Client().GetContents(runevent.Organization, runevent.Repository, ref, path)
-        if err != nil </span><span class="cov8" title="1">{
-                return "", err
-        }</span>
-        // base64 decode to string
-        <span class="cov8" title="1">decoded, err := base64.StdEncoding.DecodeString(*content.Content)
-        if err != nil </span><span class="cov0" title="0">{
-                return "", err
-        }</span>
-        <span class="cov8" title="1">return string(decoded), nil</span>
-}
-
-func (v *Provider) GetCommitInfo(_ context.Context, runevent *info.Event) error <span class="cov8" title="1">{
-        if v.giteaClient == nil </span><span class="cov8" title="1">{
-                return fmt.Errorf("no gitea client has been initialized, " +
-                        "exiting... (hint: did you forget setting a secret on your repo?)")
-        }</span>
-
-        <span class="cov8" title="1">sha := runevent.SHA
-        if sha == "" &amp;&amp; runevent.HeadBranch != "" </span><span class="cov0" title="0">{
-                branchinfo, _, err := v.Client().GetRepoBranch(runevent.Organization, runevent.Repository, runevent.HeadBranch)
-                if err != nil </span><span class="cov0" title="0">{
-                        return err
-                }</span>
-                <span class="cov0" title="0">sha = branchinfo.Commit.ID</span>
-        } else<span class="cov8" title="1"> if sha == "" &amp;&amp; runevent.PullRequestNumber != 0 </span><span class="cov0" title="0">{
-                pr, _, err := v.Client().GetPullRequest(runevent.Organization, runevent.Repository, int64(runevent.PullRequestNumber))
-                if err != nil </span><span class="cov0" title="0">{
-                        return err
-                }</span>
-                <span class="cov0" title="0">runevent.SHA = pr.Head.Sha
-                runevent.HeadBranch = pr.Head.Ref
-                runevent.BaseBranch = pr.Base.Ref
-                sha = pr.Head.Sha</span>
-        }
-        <span class="cov8" title="1">commit, _, err := v.Client().GetSingleCommit(runevent.Organization, runevent.Repository, sha)
-        if err != nil </span><span class="cov0" title="0">{
-                return err
-        }</span>
-        <span class="cov8" title="1">runevent.SHAURL = commit.HTMLURL
-        runevent.SHATitle = strings.Split(commit.RepoCommit.Message, "\n\n")[0]
-        runevent.SHA = commit.SHA
-
-        // Populate full commit information for LLM context
-        runevent.SHAMessage = commit.RepoCommit.Message
-        if commit.RepoCommit.Author != nil </span><span class="cov8" title="1">{
-                runevent.SHAAuthorName = commit.RepoCommit.Author.Name
-                runevent.SHAAuthorEmail = commit.RepoCommit.Author.Email
-                if commit.RepoCommit.Author.Date != "" </span><span class="cov8" title="1">{
-                        if authorDate, err := time.Parse(time.RFC3339, commit.RepoCommit.Author.Date); err == nil </span><span class="cov8" title="1">{
-                                runevent.SHAAuthorDate = authorDate
-                        }</span>
-                }
-        }
-        <span class="cov8" title="1">if commit.RepoCommit.Committer != nil </span><span class="cov8" title="1">{
-                runevent.SHACommitterName = commit.RepoCommit.Committer.Name
-                runevent.SHACommitterEmail = commit.RepoCommit.Committer.Email
-                if commit.RepoCommit.Committer.Date != "" </span><span class="cov8" title="1">{
-                        if committerDate, err := time.Parse(time.RFC3339, commit.RepoCommit.Committer.Date); err == nil </span><span class="cov8" title="1">{
-                                runevent.SHACommitterDate = committerDate
-                        }</span>
-                }
-        }
-        <span class="cov8" title="1">runevent.HasSkipCommand = provider.SkipCI(commit.RepoCommit.Message)
-
-        return nil</span>
-}
-
-func ShouldGetNextPage(resp *gitea.Response, currentPage int) (bool, int) <span class="cov8" title="1">{
-        val, exists := resp.Header[http.CanonicalHeaderKey("x-pagecount")]
-        if !exists </span><span class="cov8" title="1">{
-                return false, 0
-        }</span>
-        <span class="cov0" title="0">i, err := strconv.Atoi(val[0])
-        if err != nil </span><span class="cov0" title="0">{
-                return false, 0
-        }</span>
-        <span class="cov0" title="0">if i &gt;= currentPage </span><span class="cov0" title="0">{
-                return false, i
-        }</span>
-        <span class="cov0" title="0">return true, (currentPage + 1)</span>
-}
-
-type PushPayload struct {
-        Commits []gitea.PayloadCommit `json:"commits,omitempty"`
-}
-
-func (v *Provider) GetFiles(_ context.Context, runevent *info.Event) (changedfiles.ChangedFiles, error) <span class="cov8" title="1">{
-        changedFiles := changedfiles.ChangedFiles{}
-
-        //nolint:exhaustive // we don't need to handle all cases
-        switch runevent.TriggerTarget </span>{
-        case triggertype.PullRequest, triggertype.PullRequestClosed:<span class="cov8" title="1">
-                opt := gitea.ListPullRequestFilesOptions{ListOptions: gitea.ListOptions{Page: 1, PageSize: 50}}
-                shouldGetNextPage := false
-                for </span><span class="cov8" title="1">{
-                        prChangedFiles, resp, err := v.Client().ListPullRequestFiles(runevent.Organization, runevent.Repository, int64(runevent.PullRequestNumber), opt)
-                        if err != nil </span><span class="cov0" title="0">{
-                                return changedfiles.ChangedFiles{}, err
-                        }</span>
-                        <span class="cov8" title="1">for j := range prChangedFiles </span><span class="cov8" title="1">{
-                                changedFiles.All = append(changedFiles.All, prChangedFiles[j].Filename)
-                                if prChangedFiles[j].Status == "added" </span><span class="cov8" title="1">{
-                                        changedFiles.Added = append(changedFiles.Added, prChangedFiles[j].Filename)
-                                }</span>
-                                <span class="cov8" title="1">if prChangedFiles[j].Status == "deleted" </span><span class="cov8" title="1">{
-                                        changedFiles.Deleted = append(changedFiles.Deleted, prChangedFiles[j].Filename)
-                                }</span>
-                                <span class="cov8" title="1">if prChangedFiles[j].Status == "changed" </span><span class="cov8" title="1">{
-                                        changedFiles.Modified = append(changedFiles.Modified, prChangedFiles[j].Filename)
-                                }</span>
-                                <span class="cov8" title="1">if prChangedFiles[j].Status == "renamed" </span><span class="cov8" title="1">{
-                                        changedFiles.Renamed = append(changedFiles.Renamed, prChangedFiles[j].Filename)
-                                }</span>
-                        }
-
-                        <span class="cov8" title="1">shouldGetNextPage, opt.Page = ShouldGetNextPage(resp, opt.Page)
-                        if !shouldGetNextPage </span><span class="cov8" title="1">{
-                                break</span>
-                        }
-                }
-        case triggertype.Push:<span class="cov8" title="1">
-                pushPayload := PushPayload{}
-                err := json.Unmarshal(runevent.Request.Payload, &amp;pushPayload)
-                if err != nil </span><span class="cov0" title="0">{
-                        v.Logger.Errorf("failed to unmarshal the push payload to get changed files - %v", err)
-                        return changedfiles.ChangedFiles{}, fmt.Errorf("failed to unmarshal the push payload to get changed files - %w", err)
-                }</span>
-
-                <span class="cov8" title="1">for _, commit := range pushPayload.Commits </span><span class="cov8" title="1">{
-                        for _, file := range commit.Added </span><span class="cov8" title="1">{
-                                changedFiles.All = append(changedFiles.All, file)
-                                changedFiles.Added = append(changedFiles.Added, file)
-                        }</span>
-                        <span class="cov8" title="1">for _, file := range commit.Modified </span><span class="cov8" title="1">{
-                                changedFiles.All = append(changedFiles.All, file)
-                                changedFiles.Modified = append(changedFiles.Modified, file)
-                        }</span>
-                        <span class="cov8" title="1">for _, file := range commit.Removed </span><span class="cov8" title="1">{
-                                changedFiles.All = append(changedFiles.All, file)
-                                changedFiles.Deleted = append(changedFiles.Deleted, file)
-                        }</span>
-                }
-        default:<span class="cov0" title="0">
-                v.Logger.Errorf("unable to get changed files. Unknown trigger type of '%s'. Expected pull_request or push", runevent.TriggerTarget)
-                return changedFiles, fmt.Errorf("unable to get changed files. Unknown trigger type of '%s'. Expected pull_request or push", runevent.TriggerTarget)</span>
-        }
-
-        <span class="cov8" title="1">return changedFiles, nil</span>
-}
-
-func (v *Provider) CreateToken(_ context.Context, _ []string, _ *info.Event) (string, error) <span class="cov0" title="0">{
-        return "", nil
-}</span>
-
-func (v *Provider) GetTemplate(commentType provider.CommentType) string <span class="cov0" title="0">{
-        return provider.GetHTMLTemplate(commentType)
-}</span>
-</pre>
-		
-		<pre class="file" id="file110" style="display: none">// Copyright 2014 The Gogs Authors. All rights reserved.
+		<pre class="file" id="file109" style="display: none">// Copyright 2014 The Gogs Authors. All rights reserved.
 // Copyright 2017 The Gitea Authors. All rights reserved.
 // SPDX-License-Identifier: MIT.
 
-// Package giteastructs contains Gitea webhook payload types.
+// Package forgejostructs contains Gitea webhook payload types.
 // These types are copied from code.gitea.io/gitea/modules/structs v1.25.3.
 // to avoid importing the entire Gitea codebase and its massive dependency tree.
-package giteastructs
+package forgejostructs
 
 import (
         "encoding/json"
@@ -15274,6 +14792,503 @@ type RepositoryPayload struct {
 }
 </pre>
 		
+		<pre class="file" id="file110" style="display: none">package gitea
+
+import (
+        "context"
+        "encoding/base64"
+        "encoding/json"
+        "fmt"
+        "net/http"
+        "path"
+        "regexp"
+        "strconv"
+        "strings"
+        "time"
+
+        "codeberg.org/mvdkleijn/forgejo-sdk/forgejo/v2"
+        "github.com/openshift-pipelines/pipelines-as-code/pkg/apis/pipelinesascode/v1alpha1"
+        "github.com/openshift-pipelines/pipelines-as-code/pkg/changedfiles"
+        "github.com/openshift-pipelines/pipelines-as-code/pkg/events"
+        "github.com/openshift-pipelines/pipelines-as-code/pkg/opscomments"
+        "github.com/openshift-pipelines/pipelines-as-code/pkg/params"
+        "github.com/openshift-pipelines/pipelines-as-code/pkg/params/info"
+        "github.com/openshift-pipelines/pipelines-as-code/pkg/params/triggertype"
+        "github.com/openshift-pipelines/pipelines-as-code/pkg/provider"
+        providerMetrics "github.com/openshift-pipelines/pipelines-as-code/pkg/provider/metrics"
+        "go.uber.org/zap"
+)
+
+const (
+        taskStatusTemplate = `
+&lt;table&gt;
+  &lt;tr&gt;&lt;th&gt;Status&lt;/th&gt;&lt;th&gt;Duration&lt;/th&gt;&lt;th&gt;Name&lt;/th&gt;&lt;/tr&gt;
+
+{{- range $taskrun := .TaskRunList }}
+&lt;tr&gt;
+&lt;td&gt;{{ formatCondition $taskrun.PipelineRunTaskRunStatus.Status.Conditions }}&lt;/td&gt;
+&lt;td&gt;{{ formatDuration $taskrun.PipelineRunTaskRunStatus.Status.StartTime $taskrun.Status.CompletionTime }}&lt;/td&gt;&lt;td&gt;
+
+{{ $taskrun.ConsoleLogURL }}
+
+&lt;/td&gt;&lt;/tr&gt;
+{{- end }}
+&lt;/table&gt;`
+)
+
+// validate the struct to interface.
+var _ provider.Interface = (*Provider)(nil)
+
+type Provider struct {
+        giteaClient      *forgejo.Client
+        Logger           *zap.SugaredLogger
+        pacInfo          *info.PacOpts
+        Token            *string
+        giteaInstanceURL string
+        // only exposed for e2e tests
+        Password     string
+        repo         *v1alpha1.Repository
+        eventEmitter *events.EventEmitter
+        run          *params.Run
+        triggerEvent string
+}
+
+func (v *Provider) Client() *forgejo.Client <span class="cov8" title="1">{
+        providerMetrics.RecordAPIUsage(
+                v.Logger,
+                // URL used instead of "gitea" to differentiate in the case of a CI cluster which
+                // serves multiple Gitea instances
+                v.giteaInstanceURL,
+                v.triggerEvent,
+                v.repo,
+        )
+        return v.giteaClient
+}</span>
+
+func (v *Provider) SetGiteaClient(client *forgejo.Client) <span class="cov0" title="0">{
+        v.giteaClient = client
+}</span>
+
+func (v *Provider) CreateComment(_ context.Context, event *info.Event, commit, updateMarker string) error <span class="cov8" title="1">{
+        if v.giteaClient == nil </span><span class="cov8" title="1">{
+                return fmt.Errorf("no gitea client has been initialized")
+        }</span>
+
+        <span class="cov8" title="1">if event.PullRequestNumber == 0 </span><span class="cov8" title="1">{
+                return fmt.Errorf("create comment only works on pull requests")
+        }</span>
+
+        // List comments of the PR
+        <span class="cov8" title="1">if updateMarker != "" </span><span class="cov8" title="1">{
+                comments, _, err := v.Client().ListIssueComments(event.Organization, event.Repository, int64(event.PullRequestNumber), forgejo.ListIssueCommentOptions{})
+                if err != nil </span><span class="cov0" title="0">{
+                        return err
+                }</span>
+
+                <span class="cov8" title="1">re := regexp.MustCompile(updateMarker)
+                for _, comment := range comments </span><span class="cov8" title="1">{
+                        if re.MatchString(comment.Body) </span><span class="cov8" title="1">{
+                                _, _, err := v.Client().EditIssueComment(event.Organization, event.Repository, comment.ID, forgejo.EditIssueCommentOption{
+                                        Body: commit,
+                                })
+                                return err
+                        }</span>
+                }
+        }
+
+        <span class="cov8" title="1">_, _, err := v.Client().CreateIssueComment(event.Organization, event.Repository, int64(event.PullRequestNumber), forgejo.CreateIssueCommentOption{
+                Body: commit,
+        })
+
+        return err</span>
+}
+
+func (v *Provider) SetPacInfo(pacInfo *info.PacOpts) <span class="cov0" title="0">{
+        v.pacInfo = pacInfo
+}</span>
+
+// GetTaskURI TODO: Implement ME.
+func (v *Provider) GetTaskURI(_ context.Context, _ *info.Event, _ string) (bool, string, error) <span class="cov0" title="0">{
+        return false, "", nil
+}</span>
+
+func (v *Provider) SetLogger(logger *zap.SugaredLogger) <span class="cov0" title="0">{
+        v.Logger = logger
+}</span>
+
+func (v *Provider) Validate(_ context.Context, _ *params.Run, _ *info.Event) error <span class="cov0" title="0">{
+        // TODO: figure out why gitea doesn't work with mac validation as github which seems to be the same
+        v.Logger.Debug("no secret and signature found, skipping validation for gitea")
+        return nil
+}</span>
+
+func convertPullRequestURLtoNumber(pullRequest string) (int, error) <span class="cov8" title="1">{
+        prNumber, err := strconv.Atoi(path.Base(pullRequest))
+        if err != nil </span><span class="cov0" title="0">{
+                return -1, fmt.Errorf("bad pull request number html_url number: %w", err)
+        }</span>
+        <span class="cov8" title="1">return prNumber, nil</span>
+}
+
+func (v *Provider) GetConfig() *info.ProviderConfig <span class="cov0" title="0">{
+        return &amp;info.ProviderConfig{
+                TaskStatusTMPL: taskStatusTemplate,
+                APIURL:         v.giteaInstanceURL,
+                Name:           "gitea",
+                SkipEmoji:      true,
+        }
+}</span>
+
+func (v *Provider) SetClient(_ context.Context, run *params.Run, runevent *info.Event, repo *v1alpha1.Repository, emitter *events.EventEmitter) error <span class="cov0" title="0">{
+        var err error
+        apiURL := runevent.Provider.URL
+        // password is not exposed to CRD, it's only used from the e2e tests
+        if v.Password != "" &amp;&amp; runevent.Provider.User != "" </span><span class="cov0" title="0">{
+                v.giteaClient, err = forgejo.NewClient(apiURL, forgejo.SetBasicAuth(runevent.Provider.User, v.Password))
+        }</span> else<span class="cov0" title="0"> {
+                if runevent.Provider.Token == "" </span><span class="cov0" title="0">{
+                        return fmt.Errorf("no git_provider.secret has been set in the repo crd")
+                }</span>
+                <span class="cov0" title="0">v.giteaClient, err = forgejo.NewClient(apiURL, forgejo.SetToken(runevent.Provider.Token))</span>
+        }
+        <span class="cov0" title="0">if err != nil </span><span class="cov0" title="0">{
+                return err
+        }</span>
+
+        // Added log for security audit purposes to log client access when a token is used
+        <span class="cov0" title="0">run.Clients.Log.Infof("gitea: initialized API client with provided credentials user=%s providerURL=%s", runevent.Provider.User, apiURL)
+
+        v.giteaInstanceURL = runevent.Provider.URL
+        v.eventEmitter = emitter
+        v.repo = repo
+        v.run = run
+        v.triggerEvent = runevent.EventType
+        return nil</span>
+}
+
+func (v *Provider) CreateStatus(_ context.Context, event *info.Event, statusOpts provider.StatusOpts) error <span class="cov8" title="1">{
+        if v.giteaClient == nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("cannot set status on gitea no token or url set")
+        }</span>
+        <span class="cov8" title="1">switch statusOpts.Conclusion </span>{
+        case "success":<span class="cov8" title="1">
+                statusOpts.Title = "Success"
+                statusOpts.Summary = "has &lt;b&gt;successfully&lt;/b&gt; validated your commit."</span>
+        case "failure":<span class="cov8" title="1">
+                statusOpts.Title = "Failed"
+                statusOpts.Summary = "has &lt;b&gt;failed&lt;/b&gt;."</span>
+        case "pending":<span class="cov8" title="1">
+                // for concurrency set title as pending
+                if statusOpts.Title == "" </span><span class="cov8" title="1">{
+                        statusOpts.Title = "Pending"
+                }</span>
+                // for unauthorized user set title as Pending approval
+                <span class="cov8" title="1">statusOpts.Summary = "is skipping this commit."</span>
+        case "neutral":<span class="cov8" title="1">
+                statusOpts.Title = "Unknown"
+                statusOpts.Summary = "doesn't know what happened with this commit."</span>
+        }
+
+        <span class="cov8" title="1">if statusOpts.Status == "in_progress" </span><span class="cov8" title="1">{
+                statusOpts.Title = "CI has Started"
+                statusOpts.Summary = "is running.\n"
+        }</span>
+
+        <span class="cov8" title="1">onPr := ""
+        if statusOpts.PipelineRunName != "" </span><span class="cov8" title="1">{
+                onPr = fmt.Sprintf("/%s", statusOpts.PipelineRunName)
+        }</span>
+        // gitea show weirdly the &lt;br&gt;
+        <span class="cov8" title="1">statusOpts.Summary = fmt.Sprintf("%s%s %s", v.pacInfo.ApplicationName, onPr, statusOpts.Summary)
+
+        return v.createStatusCommit(event, v.pacInfo, statusOpts)</span>
+}
+
+func (v *Provider) createStatusCommit(event *info.Event, pacopts *info.PacOpts, status provider.StatusOpts) error <span class="cov8" title="1">{
+        state := forgejo.StatusState(status.Conclusion)
+        switch status.Conclusion </span>{
+        case "neutral":<span class="cov8" title="1">
+                state = forgejo.StatusSuccess</span> // We don't have a choice than setting as success, no pending here.c
+        case "pending":<span class="cov8" title="1">
+                if status.Title != "" </span><span class="cov8" title="1">{
+                        state = forgejo.StatusPending
+                }</span>
+        }
+        <span class="cov8" title="1">if status.Status == "in_progress" </span><span class="cov8" title="1">{
+                state = forgejo.StatusPending
+        }</span>
+
+        <span class="cov8" title="1">gStatus := forgejo.CreateStatusOption{
+                State:       state,
+                TargetURL:   status.DetailsURL,
+                Description: status.Title,
+                Context:     provider.GetCheckName(status, pacopts),
+        }
+        if _, _, err := v.Client().CreateStatus(event.Organization, event.Repository, event.SHA, gStatus); err != nil </span><span class="cov0" title="0">{
+                return err
+        }</span>
+
+        <span class="cov8" title="1">eventType := triggertype.IsPullRequestType(event.EventType)
+        if opscomments.IsAnyOpsEventType(eventType.String()) </span><span class="cov8" title="1">{
+                eventType = triggertype.PullRequest
+        }</span>
+        <span class="cov8" title="1">if status.Text != "" &amp;&amp; (eventType == triggertype.PullRequest || event.TriggerTarget == triggertype.PullRequest) </span><span class="cov8" title="1">{
+                status.Text = strings.ReplaceAll(strings.TrimSpace(status.Text), "&lt;br&gt;", "\n")
+                _, _, err := v.Client().CreateIssueComment(event.Organization, event.Repository,
+                        int64(event.PullRequestNumber), forgejo.CreateIssueCommentOption{
+                                Body: fmt.Sprintf("%s\n%s", status.Summary, status.Text),
+                        },
+                )
+                if err != nil </span><span class="cov0" title="0">{
+                        return err
+                }</span>
+        }
+        <span class="cov8" title="1">return nil</span>
+}
+
+func (v *Provider) GetTektonDir(_ context.Context, event *info.Event, path, provenance string) (string, error) <span class="cov8" title="1">{
+        // default set provenance from the SHA
+        revision := event.SHA
+        if provenance == "default_branch" </span><span class="cov0" title="0">{
+                revision = event.DefaultBranch
+                v.Logger.Infof("Using PipelineRun definition from default_branch: %s", event.DefaultBranch)
+        }</span> else<span class="cov8" title="1"> {
+                v.Logger.Infof("Using PipelineRun definition from source %s commit SHA: %s", event.TriggerTarget.String(), event.SHA)
+        }</span>
+
+        <span class="cov8" title="1">tektonDirSha := ""
+        opt := forgejo.GetTreesOptions{
+                Recursive: false,
+        }
+        rootobjects, _, err := v.Client().GetTrees(event.Organization, event.Repository, revision, opt)
+        if err != nil </span><span class="cov0" title="0">{
+                return "", err
+        }</span>
+        <span class="cov8" title="1">for _, object := range rootobjects.Entries </span><span class="cov8" title="1">{
+                if object.Path == path </span><span class="cov8" title="1">{
+                        if object.Type != "tree" </span><span class="cov0" title="0">{
+                                return "", fmt.Errorf("%s has been found but is not a directory", path)
+                        }</span>
+                        <span class="cov8" title="1">tektonDirSha = object.SHA</span>
+                }
+        }
+
+        // If we didn't find a .tekton directory then just silently ignore the error.
+        <span class="cov8" title="1">if tektonDirSha == "" </span><span class="cov0" title="0">{
+                return "", nil
+        }</span>
+        // Get all files in the .tekton directory recursively
+        // TODO: figure out if there is a object limit we need to handle here
+        <span class="cov8" title="1">opts := forgejo.GetTreesOptions{Recursive: false}
+        tektonDirObjects, _, err := v.Client().GetTrees(event.Organization, event.Repository, tektonDirSha, opts)
+        if err != nil </span><span class="cov0" title="0">{
+                return "", err
+        }</span>
+        <span class="cov8" title="1">return v.concatAllYamlFiles(tektonDirObjects.Entries, event)</span>
+}
+
+func (v *Provider) concatAllYamlFiles(objects []forgejo.GitEntry, event *info.Event) (string,
+        error,
+) <span class="cov8" title="1">{
+        var allTemplates string
+
+        for _, value := range objects </span><span class="cov8" title="1">{
+                if strings.HasSuffix(value.Path, ".yaml") ||
+                        strings.HasSuffix(value.Path, ".yml") </span><span class="cov8" title="1">{
+                        data, err := v.getObject(value.SHA, event)
+                        if err != nil </span><span class="cov0" title="0">{
+                                return "", err
+                        }</span>
+                        <span class="cov8" title="1">if err := provider.ValidateYaml(data, value.Path); err != nil </span><span class="cov8" title="1">{
+                                return "", err
+                        }</span>
+                        <span class="cov0" title="0">if allTemplates != "" &amp;&amp; !strings.HasPrefix(string(data), "---") </span><span class="cov0" title="0">{
+                                allTemplates += "---"
+                        }</span>
+                        <span class="cov0" title="0">allTemplates += "\n" + string(data) + "\n"</span>
+                }
+        }
+        <span class="cov0" title="0">return allTemplates, nil</span>
+}
+
+func (v *Provider) getObject(sha string, event *info.Event) ([]byte, error) <span class="cov8" title="1">{
+        blob, _, err := v.Client().GetBlob(event.Organization, event.Repository, sha)
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, err
+        }</span>
+        <span class="cov8" title="1">decoded, err := base64.StdEncoding.DecodeString(blob.Content)
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, err
+        }</span>
+        <span class="cov8" title="1">return decoded, err</span>
+}
+
+func (v *Provider) GetFileInsideRepo(_ context.Context, runevent *info.Event, path, target string) (string, error) <span class="cov8" title="1">{
+        ref := runevent.SHA
+        if target != "" </span><span class="cov8" title="1">{
+                ref = runevent.BaseBranch
+        }</span>
+
+        <span class="cov8" title="1">content, _, err := v.Client().GetContents(runevent.Organization, runevent.Repository, ref, path)
+        if err != nil </span><span class="cov8" title="1">{
+                return "", err
+        }</span>
+        // base64 decode to string
+        <span class="cov8" title="1">decoded, err := base64.StdEncoding.DecodeString(*content.Content)
+        if err != nil </span><span class="cov0" title="0">{
+                return "", err
+        }</span>
+        <span class="cov8" title="1">return string(decoded), nil</span>
+}
+
+func (v *Provider) GetCommitInfo(_ context.Context, runevent *info.Event) error <span class="cov8" title="1">{
+        if v.giteaClient == nil </span><span class="cov8" title="1">{
+                return fmt.Errorf("no gitea client has been initialized, " +
+                        "exiting... (hint: did you forget setting a secret on your repo?)")
+        }</span>
+
+        <span class="cov8" title="1">sha := runevent.SHA
+        if sha == "" &amp;&amp; runevent.HeadBranch != "" </span><span class="cov0" title="0">{
+                branchinfo, _, err := v.Client().GetRepoBranch(runevent.Organization, runevent.Repository, runevent.HeadBranch)
+                if err != nil </span><span class="cov0" title="0">{
+                        return err
+                }</span>
+                <span class="cov0" title="0">sha = branchinfo.Commit.ID</span>
+        } else<span class="cov8" title="1"> if sha == "" &amp;&amp; runevent.PullRequestNumber != 0 </span><span class="cov0" title="0">{
+                pr, _, err := v.Client().GetPullRequest(runevent.Organization, runevent.Repository, int64(runevent.PullRequestNumber))
+                if err != nil </span><span class="cov0" title="0">{
+                        return err
+                }</span>
+                <span class="cov0" title="0">runevent.SHA = pr.Head.Sha
+                runevent.HeadBranch = pr.Head.Ref
+                runevent.BaseBranch = pr.Base.Ref
+                sha = pr.Head.Sha</span>
+        }
+        <span class="cov8" title="1">commit, _, err := v.Client().GetSingleCommit(runevent.Organization, runevent.Repository, sha)
+        if err != nil </span><span class="cov0" title="0">{
+                return err
+        }</span>
+        <span class="cov8" title="1">runevent.SHAURL = commit.HTMLURL
+        runevent.SHATitle = strings.Split(commit.RepoCommit.Message, "\n\n")[0]
+        runevent.SHA = commit.SHA
+
+        // Populate full commit information for LLM context
+        runevent.SHAMessage = commit.RepoCommit.Message
+        if commit.RepoCommit.Author != nil </span><span class="cov8" title="1">{
+                runevent.SHAAuthorName = commit.RepoCommit.Author.Name
+                runevent.SHAAuthorEmail = commit.RepoCommit.Author.Email
+                if commit.RepoCommit.Author.Date != "" </span><span class="cov8" title="1">{
+                        if authorDate, err := time.Parse(time.RFC3339, commit.RepoCommit.Author.Date); err == nil </span><span class="cov8" title="1">{
+                                runevent.SHAAuthorDate = authorDate
+                        }</span>
+                }
+        }
+        <span class="cov8" title="1">if commit.RepoCommit.Committer != nil </span><span class="cov8" title="1">{
+                runevent.SHACommitterName = commit.RepoCommit.Committer.Name
+                runevent.SHACommitterEmail = commit.RepoCommit.Committer.Email
+                if commit.RepoCommit.Committer.Date != "" </span><span class="cov8" title="1">{
+                        if committerDate, err := time.Parse(time.RFC3339, commit.RepoCommit.Committer.Date); err == nil </span><span class="cov8" title="1">{
+                                runevent.SHACommitterDate = committerDate
+                        }</span>
+                }
+        }
+        <span class="cov8" title="1">runevent.HasSkipCommand = provider.SkipCI(commit.RepoCommit.Message)
+
+        return nil</span>
+}
+
+func ShouldGetNextPage(resp *forgejo.Response, currentPage int) (bool, int) <span class="cov8" title="1">{
+        val, exists := resp.Header[http.CanonicalHeaderKey("x-pagecount")]
+        if !exists </span><span class="cov8" title="1">{
+                return false, 0
+        }</span>
+        <span class="cov0" title="0">i, err := strconv.Atoi(val[0])
+        if err != nil </span><span class="cov0" title="0">{
+                return false, 0
+        }</span>
+        <span class="cov0" title="0">if i &gt;= currentPage </span><span class="cov0" title="0">{
+                return false, i
+        }</span>
+        <span class="cov0" title="0">return true, (currentPage + 1)</span>
+}
+
+type PushPayload struct {
+        Commits []forgejo.PayloadCommit `json:"commits,omitempty"`
+}
+
+func (v *Provider) GetFiles(_ context.Context, runevent *info.Event) (changedfiles.ChangedFiles, error) <span class="cov8" title="1">{
+        changedFiles := changedfiles.ChangedFiles{}
+
+        //nolint:exhaustive // we don't need to handle all cases
+        switch runevent.TriggerTarget </span>{
+        case triggertype.PullRequest, triggertype.PullRequestClosed:<span class="cov8" title="1">
+                opt := forgejo.ListPullRequestFilesOptions{ListOptions: forgejo.ListOptions{Page: 1, PageSize: 50}}
+                shouldGetNextPage := false
+                for </span><span class="cov8" title="1">{
+                        prChangedFiles, resp, err := v.Client().ListPullRequestFiles(runevent.Organization, runevent.Repository, int64(runevent.PullRequestNumber), opt)
+                        if err != nil </span><span class="cov0" title="0">{
+                                return changedfiles.ChangedFiles{}, err
+                        }</span>
+                        <span class="cov8" title="1">for j := range prChangedFiles </span><span class="cov8" title="1">{
+                                changedFiles.All = append(changedFiles.All, prChangedFiles[j].Filename)
+                                if prChangedFiles[j].Status == "added" </span><span class="cov8" title="1">{
+                                        changedFiles.Added = append(changedFiles.Added, prChangedFiles[j].Filename)
+                                }</span>
+                                <span class="cov8" title="1">if prChangedFiles[j].Status == "deleted" </span><span class="cov8" title="1">{
+                                        changedFiles.Deleted = append(changedFiles.Deleted, prChangedFiles[j].Filename)
+                                }</span>
+                                <span class="cov8" title="1">if prChangedFiles[j].Status == "changed" </span><span class="cov8" title="1">{
+                                        changedFiles.Modified = append(changedFiles.Modified, prChangedFiles[j].Filename)
+                                }</span>
+                                <span class="cov8" title="1">if prChangedFiles[j].Status == "renamed" </span><span class="cov8" title="1">{
+                                        changedFiles.Renamed = append(changedFiles.Renamed, prChangedFiles[j].Filename)
+                                }</span>
+                        }
+
+                        <span class="cov8" title="1">shouldGetNextPage, opt.Page = ShouldGetNextPage(resp, opt.Page)
+                        if !shouldGetNextPage </span><span class="cov8" title="1">{
+                                break</span>
+                        }
+                }
+        case triggertype.Push:<span class="cov8" title="1">
+                pushPayload := PushPayload{}
+                err := json.Unmarshal(runevent.Request.Payload, &amp;pushPayload)
+                if err != nil </span><span class="cov0" title="0">{
+                        v.Logger.Errorf("failed to unmarshal the push payload to get changed files - %v", err)
+                        return changedfiles.ChangedFiles{}, fmt.Errorf("failed to unmarshal the push payload to get changed files - %w", err)
+                }</span>
+
+                <span class="cov8" title="1">for _, commit := range pushPayload.Commits </span><span class="cov8" title="1">{
+                        for _, file := range commit.Added </span><span class="cov8" title="1">{
+                                changedFiles.All = append(changedFiles.All, file)
+                                changedFiles.Added = append(changedFiles.Added, file)
+                        }</span>
+                        <span class="cov8" title="1">for _, file := range commit.Modified </span><span class="cov8" title="1">{
+                                changedFiles.All = append(changedFiles.All, file)
+                                changedFiles.Modified = append(changedFiles.Modified, file)
+                        }</span>
+                        <span class="cov8" title="1">for _, file := range commit.Removed </span><span class="cov8" title="1">{
+                                changedFiles.All = append(changedFiles.All, file)
+                                changedFiles.Deleted = append(changedFiles.Deleted, file)
+                        }</span>
+                }
+        default:<span class="cov0" title="0">
+                v.Logger.Errorf("unable to get changed files. Unknown trigger type of '%s'. Expected pull_request or push", runevent.TriggerTarget)
+                return changedFiles, fmt.Errorf("unable to get changed files. Unknown trigger type of '%s'. Expected pull_request or push", runevent.TriggerTarget)</span>
+        }
+
+        <span class="cov8" title="1">return changedFiles, nil</span>
+}
+
+func (v *Provider) CreateToken(_ context.Context, _ []string, _ *info.Event) (string, error) <span class="cov0" title="0">{
+        return "", nil
+}</span>
+
+func (v *Provider) GetTemplate(commentType provider.CommentType) string <span class="cov0" title="0">{
+        return provider.GetHTMLTemplate(commentType)
+}</span>
+</pre>
+		
 		<pre class="file" id="file111" style="display: none">package gitea
 
 import (
@@ -15287,7 +15302,7 @@ import (
         "github.com/openshift-pipelines/pipelines-as-code/pkg/params/info"
         "github.com/openshift-pipelines/pipelines-as-code/pkg/params/triggertype"
         "github.com/openshift-pipelines/pipelines-as-code/pkg/provider"
-        giteaStructs "github.com/openshift-pipelines/pipelines-as-code/pkg/provider/gitea/giteastructs"
+        "github.com/openshift-pipelines/pipelines-as-code/pkg/provider/gitea/forgejostructs"
 )
 
 func (v *Provider) ParsePayload(_ context.Context, _ *params.Run, request *http.Request,
@@ -15309,7 +15324,7 @@ func (v *Provider) ParsePayload(_ context.Context, _ *params.Run, request *http.
         <span class="cov0" title="0">_ = json.Unmarshal(payloadB, &amp;eventInt)
 
         switch gitEvent := eventInt.(type) </span>{
-        case *giteaStructs.PullRequestPayload:<span class="cov0" title="0">
+        case *forgejostructs.PullRequestPayload:<span class="cov0" title="0">
                 processedEvent = info.NewEvent()
                 // // Organization:  event.GetRepo().GetOwner().GetLogin(),
                 processedEvent.Sender = gitEvent.Sender.UserName
@@ -15333,10 +15348,10 @@ func (v *Provider) ParsePayload(_ context.Context, _ *params.Run, request *http.
                 <span class="cov0" title="0">for _, label := range gitEvent.PullRequest.Labels </span><span class="cov0" title="0">{
                         processedEvent.PullRequestLabel = append(processedEvent.PullRequestLabel, label.Name)
                 }</span>
-                <span class="cov0" title="0">if gitEvent.Action == giteaStructs.HookIssueClosed </span><span class="cov0" title="0">{
+                <span class="cov0" title="0">if gitEvent.Action == forgejostructs.HookIssueClosed </span><span class="cov0" title="0">{
                         processedEvent.TriggerTarget = triggertype.PullRequestClosed
                 }</span>
-        case *giteaStructs.PushPayload:<span class="cov0" title="0">
+        case *forgejostructs.PushPayload:<span class="cov0" title="0">
                 processedEvent = info.NewEvent()
                 processedEvent.SHA = gitEvent.HeadCommit.ID
                 if processedEvent.SHA == "" </span><span class="cov0" title="0">{
@@ -15355,7 +15370,7 @@ func (v *Provider) ParsePayload(_ context.Context, _ *params.Run, request *http.
                 processedEvent.BaseURL = gitEvent.Repo.HTMLURL
                 processedEvent.HeadURL = processedEvent.BaseURL // in push events Head URL is the same as BaseURL
                 processedEvent.TriggerTarget = "push"</span>
-        case *giteaStructs.IssueCommentPayload:<span class="cov0" title="0">
+        case *forgejostructs.IssueCommentPayload:<span class="cov0" title="0">
                 if gitEvent.Issue.PullRequest == nil </span><span class="cov0" title="0">{
                         return info.NewEvent(), fmt.Errorf("issue comment is not coming from a pull_request")
                 }</span>
@@ -15386,7 +15401,7 @@ import (
         "encoding/json"
         "fmt"
 
-        giteaStructs "github.com/openshift-pipelines/pipelines-as-code/pkg/provider/gitea/giteastructs"
+        "github.com/openshift-pipelines/pipelines-as-code/pkg/provider/gitea/forgejostructs"
 )
 
 // whEventType represents a Gitea webhook event.
@@ -15417,25 +15432,25 @@ const (
 func parseWebhook(eventType whEventType, payload []byte) (event any, err error) <span class="cov8" title="1">{
         switch eventType </span>{
         case EventTypePush:<span class="cov8" title="1">
-                event = &amp;giteaStructs.PushPayload{}</span>
+                event = &amp;forgejostructs.PushPayload{}</span>
         case EventTypeCreate:<span class="cov8" title="1">
-                event = &amp;giteaStructs.CreatePayload{}</span>
+                event = &amp;forgejostructs.CreatePayload{}</span>
         case EventTypeDelete:<span class="cov0" title="0">
-                event = &amp;giteaStructs.DeletePayload{}</span>
+                event = &amp;forgejostructs.DeletePayload{}</span>
         case EventTypeFork:<span class="cov0" title="0">
-                event = &amp;giteaStructs.ForkPayload{}</span>
+                event = &amp;forgejostructs.ForkPayload{}</span>
         case EventTypeIssues:<span class="cov0" title="0">
-                event = &amp;giteaStructs.IssuePayload{}</span>
+                event = &amp;forgejostructs.IssuePayload{}</span>
         case EventTypeIssueComment:<span class="cov8" title="1">
-                event = &amp;giteaStructs.IssueCommentPayload{}</span>
+                event = &amp;forgejostructs.IssueCommentPayload{}</span>
         case EventTypeRepository:<span class="cov0" title="0">
-                event = &amp;giteaStructs.RepositoryPayload{}</span>
+                event = &amp;forgejostructs.RepositoryPayload{}</span>
         case EventTypeRelease:<span class="cov0" title="0">
-                event = &amp;giteaStructs.ReleasePayload{}</span>
+                event = &amp;forgejostructs.ReleasePayload{}</span>
         case EventTypePullRequestComment:<span class="cov0" title="0">
-                event = &amp;giteaStructs.IssueCommentPayload{}</span>
+                event = &amp;forgejostructs.IssueCommentPayload{}</span>
         case EventTypePullRequest, EventTypePullRequestApproved, EventTypePullRequestSync, EventTypePullRequestRejected, EventTypePullRequestLabel:<span class="cov8" title="1">
-                event = &amp;giteaStructs.PullRequestPayload{}</span>
+                event = &amp;forgejostructs.PullRequestPayload{}</span>
         default:<span class="cov8" title="1">
                 return nil, fmt.Errorf("unexpected event type: %s", eventType)</span>
         }
@@ -22874,10 +22889,12 @@ var (
 // value.
 //
 // The function first checks if the key in the placeholder has a prefix of
-// "body", "headers", or "files". If it does and both `rawEvent` and `headers`
+// "body", "headers", "files", or "cel:". If it does and both `rawEvent` and `headers`
 // are not nil, it attempts to retrieve the value for the key using the
 // `cel.Value` function and returns the corresponding string
-// representation. If the key does not have any of the mentioned prefixes, the
+// representation. The "cel:" prefix allows evaluating arbitrary CEL expressions
+// with access to body, headers, files, and pac (standard PAC parameters) namespaces.
+// If the key does not have any of the mentioned prefixes, the
 // function checks if the key exists in the `dico` map. If it does, the
 // function replaces the placeholder with the corresponding value from the
 // `dico` map.
@@ -22899,10 +22916,18 @@ func ReplacePlaceHoldersVariables(template string, dico map[string]string, rawEv
         return keys.ParamsRe.ReplaceAllStringFunc(template, func(s string) string </span><span class="cov8" title="1">{
                 parts := keys.ParamsRe.FindStringSubmatch(s)
                 key := strings.TrimSpace(parts[1])
-                if strings.HasPrefix(key, "body") || strings.HasPrefix(key, "headers") || strings.HasPrefix(key, "files") </span><span class="cov8" title="1">{
+
+                // Check for cel: prefix first - it allows arbitrary CEL expressions
+                isCelExpr := strings.HasPrefix(key, "cel:")
+
+                if strings.HasPrefix(key, "body") || strings.HasPrefix(key, "headers") || strings.HasPrefix(key, "files") || isCelExpr </span><span class="cov8" title="1">{
                         // Check specific requirements for each prefix
                         canEvaluate := false
+                        celExpr := key
                         switch </span>{
+                        case isCelExpr:<span class="cov8" title="1">
+                                canEvaluate = true
+                                celExpr = strings.TrimSpace(strings.TrimPrefix(key, "cel:"))</span>
                         case strings.HasPrefix(key, "body") &amp;&amp; rawEvent != nil:<span class="cov8" title="1">
                                 canEvaluate = true</span>
                         case strings.HasPrefix(key, "headers") &amp;&amp; headers != nil:<span class="cov8" title="1">
@@ -22917,10 +22942,19 @@ func ReplacePlaceHoldersVariables(template string, dico map[string]string, rawEv
                                 for k, v := range headers </span><span class="cov8" title="1">{
                                         headerMap[k] = v[0]
                                 }</span>
-                                <span class="cov8" title="1">val, err := cel.Value(key, rawEvent, headerMap, map[string]string{}, changedFiles)
-                                if err != nil </span><span class="cov8" title="1">{
-                                        return s
+                                // For cel: prefix, pass dico as pacParams so pac.* variables are available
+                                <span class="cov8" title="1">pacParams := map[string]string{}
+                                if isCelExpr </span><span class="cov8" title="1">{
+                                        pacParams = dico
                                 }</span>
+                                <span class="cov8" title="1">val, err := cel.Value(celExpr, rawEvent, headerMap, pacParams, changedFiles)
+                                if err != nil </span><span class="cov8" title="1">{
+                                        // For cel: prefix, return empty string on error
+                                        if isCelExpr </span><span class="cov8" title="1">{
+                                                return ""
+                                        }</span>
+                                        <span class="cov8" title="1">return s</span>
+                                }
                                 <span class="cov8" title="1">var raw any
                                 var b []byte
 
