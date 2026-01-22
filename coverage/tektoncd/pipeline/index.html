@@ -433,7 +433,7 @@
 				
 				<option value="file188">github.com/tektoncd/pipeline/pkg/reconciler/pipelinerun/controller.go (83.3%)</option>
 				
-				<option value="file189">github.com/tektoncd/pipeline/pkg/reconciler/pipelinerun/pipelinerun.go (90.6%)</option>
+				<option value="file189">github.com/tektoncd/pipeline/pkg/reconciler/pipelinerun/pipelinerun.go (90.5%)</option>
 				
 				<option value="file190">github.com/tektoncd/pipeline/pkg/reconciler/pipelinerun/pipelinespec/pipelinespec.go (100.0%)</option>
 				
@@ -35592,6 +35592,7 @@ import (
         "path/filepath"
         "reflect"
         "regexp"
+        "sort"
         "strings"
 
         "k8s.io/apimachinery/pkg/util/wait"
@@ -37473,6 +37474,18 @@ func updatePipelineRunStatusFromChildRefs(logger *zap.SugaredLogger, pr *v1.Pipe
         for k := range childRefByName </span><span class="cov8" title="1">{
                 newChildRefs = append(newChildRefs, *childRefByName[k])
         }</span>
+
+        // sorting childRef in a specific order can greatly avoid
+        // meaningless updates of status caused by unordered arrays.
+        <span class="cov8" title="1">sort.Slice(newChildRefs, func(i, j int) bool </span><span class="cov8" title="1">{
+                if newChildRefs[i].PipelineTaskName == newChildRefs[j].PipelineTaskName </span><span class="cov8" title="1">{
+                        if newChildRefs[i].Name == newChildRefs[j].Name </span><span class="cov0" title="0">{
+                                return newChildRefs[i].Kind &lt; newChildRefs[j].Kind
+                        }</span>
+                        <span class="cov8" title="1">return newChildRefs[i].Name &lt; newChildRefs[j].Name</span>
+                }
+                <span class="cov8" title="1">return newChildRefs[i].PipelineTaskName &lt; newChildRefs[j].PipelineTaskName</span>
+        })
         <span class="cov8" title="1">pr.Status.ChildReferences = newChildRefs</span>
 }
 
