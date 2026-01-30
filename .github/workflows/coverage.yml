@@ -53,13 +53,14 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.22'
+          go-version: '1.25'
 
       - name: Install tools
         run: |
           sudo apt-get update
           sudo apt-get install -y jq
           pip install yq
+          go install github.com/chmouel/go-better-html-coverage@latest
 
       - name: Checkout gh-pages to access old coverage.json
         uses: actions/checkout@v4
@@ -212,7 +213,8 @@ jobs:
           # Calculate coverage if we have coverage.out
           if [ -f "coverage.out" ] && [ "$STATUS" = "ok" ]; then
             COVERAGE=$(go tool cover -func=coverage.out | grep total | awk '{print $3}' | tr -d '%')
-            go tool cover -html=coverage.out -o coverage.html
+            # Use go-better-html-coverage for single-file HTML with better UI
+            go-better-html-coverage -profile coverage.out -o coverage.html -n
             mkdir -p ../coverage-html
             cp coverage.html ../coverage-html/index.html
           elif [ "$STATUS" = "failed" ]; then
