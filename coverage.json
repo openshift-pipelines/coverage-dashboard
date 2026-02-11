@@ -1,5 +1,5 @@
 {
-  "run_url": "https://github.com/openshift-pipelines/coverage-dashboard/actions/runs/21852485475",
+  "run_url": "https://github.com/openshift-pipelines/coverage-dashboard/actions/runs/21893420068",
   "data": [
     {
       "repo": "openshift-pipelines/pipelines-as-code",
@@ -8,7 +8,7 @@
     },
     {
       "repo": "tektoncd/results",
-      "coverage": 51.3,
+      "coverage": 52.3,
       "status": "ok"
     },
     {
