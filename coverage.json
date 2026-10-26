@@ -1,9 +1,9 @@
 {
-  "run_url": "https://github.com/openshift-pipelines/coverage-dashboard/actions/runs/40175644798",
+  "run_url": "https://github.com/openshift-pipelines/coverage-dashboard/actions/runs/40293585203",
   "data": [
     {
       "repo": "openshift-pipelines/pipelines-as-code",
-      "coverage": 90.2,
+      "coverage": 90.1,
       "status": "ok"
     },
     {
